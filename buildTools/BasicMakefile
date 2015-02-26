@@ -1,0 +1,80 @@
+# This Makefile needs the following variables defined if the defaults are
+# not suitable (see code)
+#  SOURCES -> Source files needed for compilation and auto-generation of deps
+#  OBJECTS -> .o files needed
+#  DICTHFILES -> Headers needed to generate the root dictionary
+#
+# Optionally, add or modify the following variables
+#  INCLUDEFLAGS
+#  LIBFLAGS
+
+
+BUILDDIR := build/
+LIBDIR   := ../lib/
+SILENT?=@
+
+packageBase    := $(shell pwd)
+packageName    := $(notdir $(packageBase))
+SHLIB          ?= $(LIBDIR)lib$(packageName).$(SHREXT)
+INCLUDEFLAGS += $(DEFS) $(ROOT_INCLUDE) -I$(packageBase)
+LIBFLAGS += $(ROOT_LIBS) $(LIBS) 
+BUILDDIRCONF := $(BUILDDIR).build
+
+SHLIBSO := $(patsubst %.$(SHREXT), $(LIBDIR)%.so, $(notdir $(SHLIB)))
+
+SOURCES := $(wildcard *.cc)
+OBJECTS := $(addprefix $(BUILDDIR), $(SOURCES:.cc=.o))
+
+.PHONY: all depend lib clean static shared
+
+all: lib
+
+lib: shared
+
+ifneq ($(SHREXT),so)
+shared: $(SHLIB) $(SHLIBSO) 
+
+$(SHLIBSO): $(SHLIB)
+	$(SILENT)rm -rf $(SHLIBSO)
+	$(SILENT)$(LN_S) $(SHLIB) $(SHLIBSO) 
+
+else
+shared: $(SHLIB)
+endif
+
+ifneq ($(MAKECMDGOALS),clean)
+-include $(BUILDDIR).depend
+endif
+
+
+$(BUILDDIRCONF):
+	$(SILENT)if [ ! -d $(BUILDDIR) ]; then $(mkdir_p) $(BUILDDIR); fi
+	$(SILENT)touch $@
+
+$(BUILDDIR).depend depend: $(SOURCES) $(BUILDDIRCONF)
+	@echo "  [$(packageName)] Checking dependencies......"
+	$(SILENT)$(CXX) -M $(CXXFLAGS) $(INCLUDEFLAGS) $(SOURCES) > $@ 
+
+
+$(BUILDDIR)%.o: %.cc 
+	@echo "  [$(packageName)] Compiling file............. $(<F)"
+	$(SILENT)$(CXX) -c $(CXXFLAGS) $(INCLUDEFLAGS) $< -o $@ 
+
+%.o: %.C
+	@echo "  [$(packageName)] Compiling file............. $(<F)"
+	$(SILENT)$(CXX) -c $(CXXFLAGS) $(INCLUDEFLAGS) $< -o $@ 
+
+
+$(SHLIB): $(OBJECTS) 
+	$(SILENT)if [ ! -d $(LIBDIR) ]; then $(mkdir_p) $(LIBDIR); fi
+	@echo "  [$(packageName)] Building library........... $(@F)"
+	$(SILENT)$(SOMAKER) $(SOFLAGS)$(@F) -Wl,-rpath,$(ORIGINFLAGS)\
+         -o $(SHLIB) $^ $(LIBFLAGS)
+
+clean:
+	@echo "  [$(packageName)] Cleaning"
+	$(SILENT)rm -f $(BUILDDIR)*.o $(BUILDDIR).depend 
+	$(SILENT)rm -f $(SHLIB)
+
+
+
