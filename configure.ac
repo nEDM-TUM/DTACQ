@@ -52,7 +52,7 @@ AM_PATH_PYTHON([2.5],
                [HAVE_PYTHON=yes
                 PYTHONLIBDIR=`$PYTHON -c 'from distutils.sysconfig import get_python_lib; print "%s/config" % get_python_lib(0,1)'`
                 PYTHONLIBFLAGS=`python-config --ldflags`
-                PYTHONINCLUDEFLAGS=`python-config --include`
+                PYTHONINCLUDEFLAGS=`python-config --includes`
                 NUMPYINCLUDEFLAGS=`python -c 'import numpy; import sys; sys.stdout.write("-I" + numpy.get_include())'`
                ],
                [HAVE_PYTHON=no

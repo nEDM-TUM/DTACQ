@@ -3,3 +3,4 @@ autom4te*
 lib*
 buildTools/config.mk
 config.log
+config.status
