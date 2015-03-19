@@ -3,11 +3,11 @@
 
 #include <string>
 #include <boost/asio/ip/tcp.hpp>
-#include <boost/timer/timer.hpp>
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
-#include <boost/lockfree/queue.hpp>
+//#include <boost/lockfree/queue.hpp>
 #include <boost/function.hpp>
+#include "CircularBuffer.hh"
 
 namespace acq {
 
@@ -35,14 +35,13 @@ class Device {
     Device& operator=(const Device&);
 
     typedef boost::asio::ip::tcp::socket sock_type;
-    typedef boost::timer::cpu_timer timer_type;
     typedef boost::recursive_mutex mutex;
-    typedef boost::lockfree::queue<data_type*, boost::lockfree::capacity<50> > queue_type;
+    //typedef boost::lockfree::queue<data_type*, boost::lockfree::capacity<1000> > queue_type;
+    typedef bounded_buffer<data_type*> queue_type;
 
     sock_type m_ServiceSocket;
     sock_type m_DataSocket;
     data_type m_DataBuffer;
-    timer_type m_Timer;
     mutable size_t m_DataRead;
 
     boost::thread m_workerThread;

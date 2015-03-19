@@ -1,6 +1,7 @@
 #include <boost/python.hpp>
 #include <boost/python/make_function.hpp>
 #include <boost/bind.hpp>
+#include <boost/make_shared.hpp>
 #include <boost/thread/thread.hpp> 
 #include "ACQ/Device.hh"
 #include <cstdlib>
@@ -18,7 +19,7 @@ struct DataType_to_python_dat
     static bp::object convertObj(const Device::data_type& s)
     {
         npy_intp p[1] = { s.size() };
-        PyObject* py_buffer = PyArray_SimpleNewFromData(1, p, NPY_UINT16, (void*)&s[0]); 
+        PyObject* py_buffer = PyArray_SimpleNewFromData(1, p, NPY_INT16, (void*)&s[0]); 
         return boost::python::object(handle<>(py_buffer));
     }
     static PyObject* convert(const Device::data_type& s)

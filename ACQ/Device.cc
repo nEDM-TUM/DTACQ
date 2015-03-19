@@ -46,7 +46,8 @@ class IOService {
 //-----------------------------------------------------------------
 Device::Device(const std::string& ipAddr) :
   m_ServiceSocket(IOService::IO().Service()),
-  m_DataSocket(IOService::IO().Service())
+  m_DataSocket(IOService::IO().Service()),
+  m_Queue(4000)
 {
   ResetIPAddress(ipAddr);
 }
@@ -54,7 +55,8 @@ Device::Device(const std::string& ipAddr) :
 //-----------------------------------------------------------------
 Device::Device(const Device& dev) :
   m_ServiceSocket(IOService::IO().Service()),
-  m_DataSocket(IOService::IO().Service())
+  m_DataSocket(IOService::IO().Service()),
+  m_Queue(4000)
 {
   ResetIPAddress(dev.IPAddress());
 }
@@ -124,7 +126,6 @@ void Device::BeginReadout(Device::callback_functor func, size_t bufferSize)
   tcp::resolver::iterator endpts = res.resolve(tcp::resolver::query(IPAddress(), "4210"));
   boost::asio::connect(m_DataSocket, endpts);
   m_DataRead = 0;
-  m_Timer.start();
   // Start processing thread
   m_workerThread = boost::thread(boost::bind(&Device::AnalysisThread, this, func));
 
@@ -134,17 +135,15 @@ void Device::BeginReadout(Device::callback_functor func, size_t bufferSize)
 //-----------------------------------------------------------------
 void Device::AnalysisThread(Device::callback_functor func)
 {
-  std::cout << "Analysis thread start" << std::endl;
   boost::function< void(data_type*) > myFunc = boost::bind(&Device::ConsumeFromQueue, this, func, _1); 
   while( m_DataSocket.is_open() ) {
     if( !m_Queue.consume_one( myFunc ) ) {
-      boost::this_thread::sleep(boost::posix_time::milliseconds(100));
+      boost::this_thread::sleep(boost::posix_time::milliseconds(1));
     }
   } 
 
   // If we get here the socket has been closed, consume the rest of the data
-  m_Queue.consume_all( myFunc );
-  std::cout << "Analysis thread done" << std::endl;
+  m_Queue.consume_all_no_lock( myFunc );
 }
 
 //-----------------------------------------------------------------
@@ -152,7 +151,6 @@ void Device::StopReadout()
 {
   mutex::scoped_lock sL(m_DataSocketMutex); 
   if (m_DataSocket.is_open()) m_DataSocket.close();
-  m_Timer.stop();
   m_workerThread.join();
 }
 
@@ -172,7 +170,8 @@ void Device::ConsumeFromQueue(Device::callback_functor func, Device::data_type* 
 //-----------------------------------------------------------------
 void Device::DoSingleRead()
 {
-  m_DataSocket.async_receive(
+  boost::asio::async_read(
+        m_DataSocket,
         boost::asio::buffer(m_DataBuffer, m_DataBuffer.size()*sizeof(m_DataBuffer[0])),
         boost::bind(&Device::HandleRead, this, 
              boost::asio::placeholders::error,
