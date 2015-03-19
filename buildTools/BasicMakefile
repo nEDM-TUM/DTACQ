@@ -9,23 +9,56 @@
 #  LIBFLAGS
 
 
-BUILDDIR := build/
-LIBDIR   := ../lib/
 SILENT?=@
 
 packageBase    := $(shell pwd)
+SOURCEDIR      := $(packageBase)
+BUILDDIR       := $(addprefix $(packageBase)/, build)
+LIBDIR         := $(addprefix $(packageBase)/, ../lib)
 packageName    := $(notdir $(packageBase))
-SHLIB          ?= $(LIBDIR)lib$(packageName).$(SHREXT)
+SHLIB          ?= $(LIBDIR)/lib$(packageName).$(SHREXT)
 INCLUDEFLAGS += $(DEFS) $(ROOT_INCLUDE) -I$(packageBase)
 LIBFLAGS += $(ROOT_LIBS) $(LIBS) 
-BUILDDIRCONF := $(BUILDDIR).build
+BUILDDIRCONF := $(BUILDDIR)/.build
+BUILDBEGIN  := $(BUILDDIR)/.buildbegin
 
-SHLIBSO := $(patsubst %.$(SHREXT), $(LIBDIR)%.so, $(notdir $(SHLIB)))
+SHLIBSO := $(patsubst %.$(SHREXT), $(LIBDIR)/%.so, $(notdir $(SHLIB)))
 
 SOURCES := $(wildcard *.cc)
-OBJECTS := $(addprefix $(BUILDDIR), $(SOURCES:.cc=.o))
+OBJECTS := $(addprefix $(BUILDDIR)/, $(SOURCES:.cc=.o))
+DEPCCFILES  := $(addprefix $(BUILDDIR)/,$(addsuffix .d,$(basename $(notdir $(SOURCES)))))
+##############################################################################
+# Define general rules for Make
+
+# START_TRAP and END_TRAP should bookend commands, allowing all errors in the
+# commands to be caught, and properly cleaned up.  That is, if make is
+# interrupted by a user, or a command exits with an error status, this ensures
+# that the script will still cleanup after itself.  At the moment, it only
+# removes the BUILDBEGIN file, but could have more advanced behavior in the
+# future. 
+START_TRAP = set -e; trap "exit 1" INT TERM EXIT
+END_TRAP = trap - INT TERM EXIT
+ERASE_BUILDBEGIN = rm -f $(BUILDBEGIN)
+
+
+# Making dependencies
+# This uses gcc to auto-make the dependencies and then adds the .o and .d file
+# to the dependency rule. As well, to avoid ``No rule to make target ...''
+# errors, the .d file is parsed again to add empty targets for each file.  This
+# enables Make not to fail when a file no longer exists.  See, e.g.
+# http://mad-scientist.net/make/autodep.html#norule
+MAKEDEPEND = $(SILENT)$(START_TRAP); rm -f $@; \
+	$(CXX) $(CXXFLAGS) -MM $(INCLUDEFLAGS) $< > $@.$$$$;                                 \
+        cp $@.$$$$ $@.temp.$$$$; sed -e 's/\#.*//' -e 's/^[^:]*: *//' -e 's/ *\\$$//' \
+        -e '/^$$/ d' -e 's/$$/ :/' < $@.$$$$ >> $@.temp.$$$$;                         \
+	sed 's,\($*\)\.o[ :]*,$(BUILDDIR)/\1.o $@ : ,g' < $@.temp.$$$$ > $@ ;          \
+        rm -f $@*.$$$$;$(END_TRAP) 
+
+MAKEOFILES = $(SILENT)$(START_TRAP); $(CXX) $(CXXFLAGS) $(INCLUDEFLAGS) -c -o $@ $<; $(END_TRAP) 
 
 .PHONY: all depend lib clean static shared
+.SECONDARY : $(BUILDDIRCONF) 
+.INTERMEDIATE: $(BUILDBEGIN)
 
 all: lib
 
@@ -43,26 +76,24 @@ shared: $(SHLIB)
 endif
 
 ifneq ($(MAKECMDGOALS),clean)
--include $(BUILDDIR).depend
+-include $(DEPCCFILES)
 endif
 
-
+##############################################################################
+# Dependencies
 $(BUILDDIRCONF):
 	$(SILENT)if [ ! -d $(BUILDDIR) ]; then $(mkdir_p) $(BUILDDIR); fi
 	$(SILENT)touch $@
 
-$(BUILDDIR).depend depend: $(SOURCES) $(BUILDDIRCONF)
-	@echo "  [$(packageName)] Checking dependencies......"
-	$(SILENT)$(CXX) -M $(CXXFLAGS) $(INCLUDEFLAGS) $(SOURCES) > $@ 
+
+$(DEPCCFILES): $(BUILDDIR)/%.d : $(SOURCEDIR)/%.cc $(BUILDDIRCONF) 
+	@echo "  [$(packageName)] Update dependencies........ $(<F)"
+	$(MAKEDEPEND)
 
 
-$(BUILDDIR)%.o: %.cc 
+$(OBJECTS): $(BUILDDIR)/%.o: $(SOURCEDIR)/%.cc $(BUILDDIRCONF) 
 	@echo "  [$(packageName)] Compiling file............. $(<F)"
-	$(SILENT)$(CXX) -c $(CXXFLAGS) $(INCLUDEFLAGS) $< -o $@ 
-
-%.o: %.C
-	@echo "  [$(packageName)] Compiling file............. $(<F)"
-	$(SILENT)$(CXX) -c $(CXXFLAGS) $(INCLUDEFLAGS) $< -o $@ 
+	$(MAKEOFILES)
 
 
 $(SHLIB): $(OBJECTS) 
@@ -73,7 +104,7 @@ $(SHLIB): $(OBJECTS)
 
 clean:
 	@echo "  [$(packageName)] Cleaning"
-	$(SILENT)rm -f $(BUILDDIR)*.o $(BUILDDIR).depend 
+	$(SILENT)rm -rf $(BUILDDIR)
 	$(SILENT)rm -f $(SHLIB)
 
 
