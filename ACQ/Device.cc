@@ -5,9 +5,11 @@
 #include <boost/asio/read_until.hpp>
 #include <boost/asio/read.hpp>
 #include <boost/bind.hpp>
+#include <boost/lexical_cast.hpp>
 #include <boost/asio/placeholders.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <iostream>
+#include <sstream>
 
 namespace acq {
 
@@ -74,7 +76,17 @@ void Device::ResetIPAddress(const std::string& ipAddr)
   boost::asio::connect(m_ServiceSocket, endpts);
   //m_ServiceSocket.set_option( boost::asio::socket_base::keep_alive(true) );
   SendCommand("prompt on");
+  std::string ret = SendCommand("SIG:CLK_S*:COUNT");
+  m_numSites = std::count(ret.begin(), ret.end(), '\n') + 1;
+  m_Channels.clear();
+  for( size_t i=0;i<m_numSites;i++) {
+    std::ostringstream os;
+    os << "get.site " << i+1 << " NCHAN";
+    m_Channels.push_back(boost::lexical_cast<size_t>(SendCommand(os.str())));
+  }
 }
+
+//-----------------------------------------------------------------
 
 //-----------------------------------------------------------------
 std::string Device::IPAddress() const

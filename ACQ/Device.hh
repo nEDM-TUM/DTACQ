@@ -31,6 +31,9 @@ class Device {
             callback_functor CallBack, 
             size_t bufferSize = 1024*1024);
     void StopReadout();
+
+    size_t NumSites() const { return m_numSites; }
+    size_t NumChannels(size_t site_no) const { return m_Channels[site_no]; }
   protected:
     Device& operator=(const Device&);
 
@@ -38,6 +41,7 @@ class Device {
     typedef boost::recursive_mutex mutex;
     //typedef boost::lockfree::queue<data_type*, boost::lockfree::capacity<1000> > queue_type;
     typedef bounded_buffer<data_type*> queue_type;
+    typedef std::vector<size_t> chan_number_type;
 
     sock_type m_ServiceSocket;
     sock_type m_DataSocket;
@@ -47,6 +51,9 @@ class Device {
     boost::thread m_workerThread;
     mutex m_DataSocketMutex;
     queue_type m_Queue;
+
+    size_t m_numSites;
+    chan_number_type m_Channels;
 
     void PushOnQueue(const data_type& dat, size_t len);
     void ConsumeFromQueue(callback_functor, data_type*);
