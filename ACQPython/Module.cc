@@ -123,6 +123,7 @@ BOOST_PYTHON_MODULE(pyacq)
     .def("StopReadout", &PyDevice::StopReadout) 
     .def("NumSites", &PyDevice::NumSites)
     .def("NumChannels", &PyDevice::NumChannels)
+    .def("IsRunning", &PyDevice::IsRunning)
     .def("BeginReadout", &PyDevice::beginReadoutWrapper, ( bp::arg( "function" ), bp::arg( "buffer_size" ) )); 
 
   //class_<Device::data_type>("DataVec")

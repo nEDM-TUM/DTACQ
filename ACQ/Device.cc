@@ -124,9 +124,6 @@ void Device::BeginReadout(Device::callback_functor func, size_t bufferSize)
 {
 
   mutex::scoped_lock sL(m_DataSocketMutex); 
-  //if (!m_workerThread.try_join_for(boost::chrono::milliseconds(0))) {
-  //  return;
-  //}
   StopReadout();
 
 
@@ -213,6 +210,13 @@ void Device::DefaultReadout(ptr_type dat) const
 void Device::CloseSocket(Device::sock_type& sock)
 {
   IOService::Service().post( boost::bind( &sock_type::close, &sock ) );
+}
+
+bool Device::IsRunning()
+{
+  // return true if running, false if not
+  return (m_workerThread.get_id() != boost::thread::id() &&
+          !m_workerThread.try_join_for(boost::chrono::milliseconds(0)));
 }
 
 }
