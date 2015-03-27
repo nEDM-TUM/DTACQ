@@ -148,14 +148,19 @@ void Device::BeginReadout(Device::callback_functor func, size_t bufferSize)
 void Device::AnalysisThread(Device::callback_functor func)
 {
   boost::function< void(data_type*) > myFunc = boost::bind(&Device::ConsumeFromQueue, this, func, _1); 
-  while( m_DataSocket.is_open() ) {
-    if( !m_Queue.consume_one( myFunc ) ) {
-      boost::this_thread::sleep(boost::posix_time::milliseconds(1));
-    }
-  } 
-
-  // If we get here the socket has been closed, consume the rest of the data
-  m_Queue.consume_all_no_lock( myFunc );
+  try {
+    while( m_DataSocket.is_open() ) {
+      if( !m_Queue.consume_one( myFunc ) ) {
+        boost::this_thread::sleep(boost::posix_time::milliseconds(1));
+      }
+    } 
+    
+    // If we get here the socket has been closed, consume the rest of the data
+    m_Queue.consume_all_no_lock( myFunc );
+  } catch(...) {
+    std::cerr << "Exception caught in readout, stopping socket" << std::endl;
+    CloseSocket(m_DataSocket);
+  }
 }
 
 //-----------------------------------------------------------------
