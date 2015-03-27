@@ -26,9 +26,9 @@ class IOService {
       return gServiceSingleton;
     }
 
-    io_type& Service()
+    static io_type& Service()
     {
-      return m_IOService;
+      return IO().m_IOService;
     } 
 
   private:
@@ -47,8 +47,8 @@ class IOService {
 
 //-----------------------------------------------------------------
 Device::Device(const std::string& ipAddr) :
-  m_ServiceSocket(IOService::IO().Service()),
-  m_DataSocket(IOService::IO().Service()),
+  m_ServiceSocket(IOService::Service()),
+  m_DataSocket(IOService::Service()),
   m_Queue(4000)
 {
   ResetIPAddress(ipAddr);
@@ -56,8 +56,8 @@ Device::Device(const std::string& ipAddr) :
 
 //-----------------------------------------------------------------
 Device::Device(const Device& dev) :
-  m_ServiceSocket(IOService::IO().Service()),
-  m_DataSocket(IOService::IO().Service()),
+  m_ServiceSocket(IOService::Service()),
+  m_DataSocket(IOService::Service()),
   m_Queue(4000)
 {
   ResetIPAddress(dev.IPAddress());
@@ -71,7 +71,7 @@ void Device::ResetIPAddress(const std::string& ipAddr)
   if (m_DataSocket.is_open()) m_DataSocket.close();
 
   // Open up the command service
-  tcp::resolver res(IOService::IO().Service()); 
+  tcp::resolver res(IOService::Service());
   tcp::resolver::iterator endpts = res.resolve(tcp::resolver::query(ipAddr, "4220"));
   boost::asio::connect(m_ServiceSocket, endpts);
   //m_ServiceSocket.set_option( boost::asio::socket_base::keep_alive(true) );
@@ -134,7 +134,7 @@ void Device::BeginReadout(Device::callback_functor func, size_t bufferSize)
   m_DataBuffer.resize(bufferSize); 
 
   // Opem 
-  tcp::resolver res(IOService::IO().Service()); 
+  tcp::resolver res(IOService::Service());
   tcp::resolver::iterator endpts = res.resolve(tcp::resolver::query(IPAddress(), "4210"));
   boost::asio::connect(m_DataSocket, endpts);
   m_DataRead = 0;
