@@ -63,6 +63,21 @@ struct release_gil_policy
   PyThreadState* _currentState;
 };
 
+struct ensure_gil_state
+{
+  ensure_gil_state() :
+    _state(PyGILState_Ensure())
+  {
+  }
+
+  ~ensure_gil_state()
+  {
+    PyGILState_Release(_state);
+  }
+  PyGILState_STATE _state;
+};
+
+
 class PyDevice: public Device
 {
   public:
@@ -88,10 +103,8 @@ class PyDevice: public Device
   private:
     void PyCallback(ptr_type dat)
     {
-     PyGILState_STATE gstate;
-     gstate = PyGILState_Ensure();
+      ensure_gil_state gS;
       _callable(boost::make_shared<dev_buffer>(dat));
-     PyGILState_Release(gstate);
     }
 
     bp::object _callable;
