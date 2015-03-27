@@ -67,8 +67,8 @@ Device::Device(const Device& dev) :
 void Device::ResetIPAddress(const std::string& ipAddr)
 {
   // Close both services
-  if (m_ServiceSocket.is_open()) m_ServiceSocket.close();
-  if (m_DataSocket.is_open()) m_DataSocket.close();
+  if (m_ServiceSocket.is_open()) CloseSocket(m_ServiceSocket);
+  if (m_DataSocket.is_open()) CloseSocket(m_DataSocket);
 
   // Open up the command service
   tcp::resolver res(IOService::Service());
@@ -162,7 +162,9 @@ void Device::AnalysisThread(Device::callback_functor func)
 void Device::StopReadout()
 {
   mutex::scoped_lock sL(m_DataSocketMutex); 
-  if (m_DataSocket.is_open()) m_DataSocket.close();
+  if (m_DataSocket.is_open()) {
+    CloseSocket(m_DataSocket);
+  }
   m_workerThread.join();
 }
 
@@ -201,6 +203,11 @@ void Device::HandleRead(const boost::system::error_code&,
 void Device::DefaultReadout(ptr_type dat) const
 {
   m_DataRead += dat->size(); 
+}
+
+void Device::CloseSocket(Device::sock_type& sock)
+{
+  IOService::Service().post( boost::bind( &sock_type::close, &sock ) );
 }
 
 }

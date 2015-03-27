@@ -65,6 +65,8 @@ class Device {
     void HandleRead(const boost::system::error_code& err,
                     std::size_t bytes_transferred);
 
+    void CloseSocket(sock_type&);
+
 };
 
 }
