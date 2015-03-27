@@ -193,11 +193,11 @@ void Device::DoSingleRead()
 }
 
 //-----------------------------------------------------------------
-void Device::HandleRead(const boost::system::error_code&,
+void Device::HandleRead(const boost::system::error_code& error,
                 std::size_t bytes_transferred)
 {
   PushOnQueue(m_DataBuffer, bytes_transferred/sizeof(m_DataBuffer[0]));
-  if (m_DataSocket.is_open()) DoSingleRead();
+  if (m_DataSocket.is_open() && !error) DoSingleRead();
 }
 
 void Device::DefaultReadout(ptr_type dat) const
