@@ -118,6 +118,11 @@ class ReadoutObj(object):
         if self.open_file is not None: self.open_file.close()      
         self.open_file = None
 
+    def setClkDiv(self, **kw):
+        self._ensureNotRunning()
+        clkdiv = int(kw.get("clkdiv", 1000))
+        return self.dev.SendCommand("set.site 1 clkdiv " + str(clkdiv))
+
     def startReadout(self, **kw):
         self._ensureNotRunning()
         buffer_size = kw.get("buffer_size", 1*1024*1024)
