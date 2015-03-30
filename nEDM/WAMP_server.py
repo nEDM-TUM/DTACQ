@@ -234,7 +234,8 @@ class ReadoutObj(object):
         if self.isRunning: self.stopReadout()
         
 available_urls = [
-		"digitizer.1.nedm1"
+		"digitizer.1.nedm1",
+		"digitizer.2.nedm1"
 ]
 
 
