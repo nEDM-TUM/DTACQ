@@ -76,14 +76,19 @@ void Device::ResetIPAddress(const std::string& ipAddr)
   boost::asio::connect(m_ServiceSocket, endpts);
   //m_ServiceSocket.set_option( boost::asio::socket_base::keep_alive(true) );
   SendCommand("prompt on");
-  std::string ret = SendCommand("SIG:CLK_S*:COUNT");
-  m_numSites = std::count(ret.begin(), ret.end(), '\n') + 1;
+  m_numSites = 0;
   m_Channels.clear();
-  for( size_t i=0;i<m_numSites;i++) {
-    std::ostringstream os;
-    os << "get.site " << i+1 << " NCHAN";
-    m_Channels.push_back(boost::lexical_cast<size_t>(SendCommand(os.str())));
+  for( size_t i=0;;i++) {
+    try {
+      std::ostringstream os;
+      os << "get.site " << i+1 << " NCHAN";
+      m_Channels.push_back(boost::lexical_cast<size_t>(SendCommand(os.str())));
+    } catch (boost::bad_lexical_cast &) {
+      // Just means we couldn't find anymore sites
+      break;
+    }
   }
+  m_numSites = m_Channels.size();
 }
 
 //-----------------------------------------------------------------
