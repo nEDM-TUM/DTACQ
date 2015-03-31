@@ -220,8 +220,7 @@ void Device::CloseSocket(Device::sock_type& sock)
 bool Device::IsRunning()
 {
   // return true if running, false if not
-  return (m_workerThread.get_id() != boost::thread::id() &&
-          !m_workerThread.try_join_for(boost::chrono::milliseconds(0)));
+  return m_DataSocket.is_open();
 }
 
 }
