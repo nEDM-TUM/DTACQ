@@ -218,7 +218,7 @@ void Device::CloseSocket(Device::sock_type& sock)
   IOService::Service().post( boost::bind( &sock_type::close, &sock ) );
 }
 
-bool Device::IsRunning()
+bool Device::IsRunning() const
 {
   // return true if running, false if not
   return m_DataSocket.is_open();

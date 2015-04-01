@@ -32,7 +32,7 @@ class Device {
             size_t bufferSize = 1024*1024);
     void StopReadout();
 
-    bool IsRunning();
+    bool IsRunning() const;
 
     size_t NumSites() const { return m_numSites; }
     size_t NumChannels(size_t site_no) const { return m_Channels[site_no]; }
