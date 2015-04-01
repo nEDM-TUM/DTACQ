@@ -17,54 +17,72 @@ using namespace boost::python;
 namespace bp = boost::python;
 using namespace acq;
 
-// Wrapper for timer function parameter
-typedef boost::function< void(Device::ptr_type) > func_type;
+//-----------------------------------------------------------------
+// Convert from Data type to python numpy array
+template< typename T >
 struct DataType_to_python_dat
 {
-    static bp::object convertObj(const Device::data_type& s)
+    typedef typename Device::DevTempl<T>::data_type dt;
+    static object convertObj(const dt& s)
     {
-        npy_intp p[1] = { s.size() };
-        PyObject* py_buffer = PyArray_SimpleNewFromData(1, p, NPY_INT16, (void*)&s[0]); 
+        npy_intp p = (npy_intp)s.size();
+        PyObject* py_buffer = PyArray_SimpleNewFromData(
+          1, // dimension
+          &p,// array of dimension sizes
+          (sizeof(s[0]) == 2) ? NPY_INT16 : NPY_INT32, // type
+          (void*)&s[0] // address
+        );
         return boost::python::object(handle<>(py_buffer));
     }
-    static PyObject* convert(const Device::data_type& s)
+    static PyObject* convert(const dt& s)
     {
       return convertObj(s).ptr();
     }
 };
 
-
+//-----------------------------------------------------------------
+template< typename T >
 class dev_buffer
 {
   public:
-    dev_buffer(Device::ptr_type p) : _ptr(p) {}
+    typedef typename Device::DevTempl<T>::ptr_type ptr_type;
+    dev_buffer(ptr_type p) : _ptr(p) {}
 
-    size_t size() { return _ptr->size(); }
-    bp::object vec() { return DataType_to_python_dat::convertObj(*_ptr); }
-    //Py_buffer* buf() 
-    //{
-    //  Py_buffer *b = (Py_buffer*) std::calloc(sizeof(*b)); 
-    //  b->buf = &((*_ptr)[0]); 
-    //  b->itemsize = sizeof((*_ptr)[0]);
-    //  b->len = b->itemsize*_ptr->size();
-    //  b->format = "H";
-    //  return b;
-    //}
+    size_t size()
+    {
+      return _ptr->size();
+    }
+
+    object vec()
+    {
+      return DataType_to_python_dat<T>::convertObj(*_ptr);
+    }
+
   private:
-    Device::ptr_type _ptr;
+    ptr_type _ptr;
 };
 
-
-
-
+//-----------------------------------------------------------------
 class PyDevice: public Device
 {
   public:
     PyDevice(const std::string& ip) : Device(ip) {}
-    void beginReadoutWrapper( bp::object function, uint64_t buffer_size = 1024*1024 )
+    void beginReadoutWrapper( object function,
+      uint64_t buffer_size = 1024*1024 )
     {
-        _callable = function;
-        BeginReadout( func_type( boost::bind(&PyDevice::PyCallback, this, _1) ), buffer_size );
+        #define READOUTTYPE(atype)                            \
+        case sizeof(atype):                                   \
+          BeginReadout<atype>( [function]                     \
+              (DevTempl<atype>::ptr_type pt) {                \
+            ensure_gil_state gS;                              \
+            typedef dev_buffer<atype> db;                     \
+            function(boost::make_shared<db>(pt));             \
+          }, buffer_size); break;
+
+        switch( ReadoutSize() ) {
+          READOUTTYPE(int16_t)
+          READOUTTYPE(int32_t)
+        }
     }
 
     std::string SendCommand(const std::string& cmd)
@@ -79,36 +97,36 @@ class PyDevice: public Device
       return Device::StopReadout();
     }
 
-  private:
-    void PyCallback(ptr_type dat)
-    {
-      ensure_gil_state gS;
-      _callable(boost::make_shared<dev_buffer>(dat));
-    }
-
-    bp::object _callable;
 };
 
-  
 
+//-----------------------------------------------------------------
+template <typename T>
+void define_buffer(const std::string& aname)
+{
+  typedef dev_buffer<T> db;
+  class_<db, boost::shared_ptr<db> >(aname.c_str(),
+      boost::python::no_init)
+    .def("__len__", &db::size)
+    .def("vec", &db::vec);
+}
+
+//-----------------------------------------------------------------
 BOOST_PYTHON_MODULE(pyacq)
 {
   // We need threads
   PyEval_InitThreads();
   import_array();
-  bp::to_python_converter<Device::data_type, DataType_to_python_dat>();
+
   class_<PyDevice>("Device", init<const std::string&>())
-    .def("SendCommand", &PyDevice::SendCommand) 
-    .def("StopReadout", &PyDevice::StopReadout) 
+    .def("SendCommand", &PyDevice::SendCommand)
+    .def("StopReadout", &PyDevice::StopReadout)
     .def("NumSites", &PyDevice::NumSites)
     .def("NumChannels", &PyDevice::NumChannels)
     .def("IsRunning", &PyDevice::IsRunning)
     .def("BeginReadout", &PyDevice::beginReadoutWrapper, ( bp::arg( "function" ), bp::arg( "buffer_size" ) )); 
 
-  //class_<Device::data_type>("DataVec")
-  //  .def(bp::vector_indexing_suite<Device::data_type>());
+  define_buffer<int16_t>("DevBuffer_16");
+  define_buffer<int32_t>("DevBuffer_32");
 
-  class_<dev_buffer, boost::shared_ptr<dev_buffer> >("Device_buffer", boost::python::no_init)
-    .def("__len__", &dev_buffer::size)
-    .def("vec", &dev_buffer::vec);
 }
