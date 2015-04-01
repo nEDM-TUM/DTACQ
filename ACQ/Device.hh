@@ -13,9 +13,15 @@ namespace acq {
 
 class Device {
   public:
-    typedef std::vector< uint16_t > data_type;
-    typedef boost::shared_ptr<data_type> ptr_type;
-    typedef boost::function<void (ptr_type)> callback_functor;
+
+    template < typename T >
+    class DevTempl {
+      public:
+        typedef typename std::vector< T > data_type;
+        typedef typename boost::shared_ptr< data_type > ptr_type;
+        typedef typename boost::function< void (ptr_type) > callback_functor;
+
+    };
 
     Device(const std::string& ipAddr = "");
     Device(const Device&);
@@ -27,9 +33,13 @@ class Device {
 
     void BeginReadout(size_t bufferSize = 1024*1024);
 
+	// Following function will abort if the correct size (in typename) isn't
+	// called.  At the moment, only int16_t and int32_t are implemented
+	template<typename T>
     void BeginReadout(
-            callback_functor CallBack, 
+            typename DevTempl<T>::callback_functor func,
             size_t bufferSize = 1024*1024);
+
     void StopReadout();
 
     bool IsRunning() const;
@@ -38,34 +48,22 @@ class Device {
     size_t NumChannels(size_t site_no) const { return m_Channels[site_no]; }
     size_t ReadoutSize() const { return m_ReadoutSize; }
   protected:
+
+    // Disable copy operator
     Device& operator=(const Device&);
 
     typedef boost::asio::ip::tcp::socket sock_type;
     typedef boost::recursive_mutex mutex;
-    //typedef boost::lockfree::queue<data_type*, boost::lockfree::capacity<1000> > queue_type;
-    typedef bounded_buffer<data_type*> queue_type;
     typedef std::vector<size_t> chan_number_type;
 
     sock_type m_ServiceSocket;
     sock_type m_DataSocket;
-    data_type m_DataBuffer;
     mutable size_t m_DataRead;
 
     boost::thread m_workerThread;
     mutex m_DataSocketMutex;
-    queue_type m_Queue;
 
     chan_number_type m_Channels;
-
-    void PushOnQueue(const data_type& dat, size_t len);
-    void ConsumeFromQueue(callback_functor, data_type*);
-    void AnalysisThread(callback_functor func);
-
-    void DefaultReadout(ptr_type) const;
-
-    void DoSingleRead();
-    void HandleRead(const boost::system::error_code& err,
-                    std::size_t bytes_transferred);
     size_t m_numSites;
     size_t m_ReadoutSize;
 

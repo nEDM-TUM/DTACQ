@@ -48,8 +48,7 @@ class IOService {
 //-----------------------------------------------------------------
 Device::Device(const std::string& ipAddr) :
   m_ServiceSocket(IOService::Service()),
-  m_DataSocket(IOService::Service()),
-  m_Queue(4000)
+  m_DataSocket(IOService::Service())
 {
   ResetIPAddress(ipAddr);
 }
@@ -57,8 +56,7 @@ Device::Device(const std::string& ipAddr) :
 //-----------------------------------------------------------------
 Device::Device(const Device& dev) :
   m_ServiceSocket(IOService::Service()),
-  m_DataSocket(IOService::Service()),
-  m_Queue(4000)
+  m_DataSocket(IOService::Service())
 {
   ResetIPAddress(dev.IPAddress());
 }
@@ -122,51 +120,93 @@ std::string Device::SendCommand(const std::string& cmd)
   return retStr.substr(0, last_n);
 }
 
-//-----------------------------------------------------------------
-void Device::BeginReadout(size_t bufferSize)
-{
-  BeginReadout(boost::bind(&Device::DefaultReadout, this, _1), bufferSize);
-}
-
 
 //-----------------------------------------------------------------
-void Device::BeginReadout(Device::callback_functor func, size_t bufferSize)
+template<typename T>
+void Device::BeginReadout(typename Device::DevTempl<T>::callback_functor func, size_t bufferSize)
 {
+  typedef typename DevTempl<T>::data_type dt;
+  typedef typename DevTempl<T>::ptr_type pt;
+  typedef bounded_buffer< dt* > queue_type;
+  static dt m_DataBuffer;
+  static queue_type m_Queue(4000);
 
-  mutex::scoped_lock sL(m_DataSocketMutex); 
+  assert(ReadoutSize() == sizeof(m_DataBuffer[0]));
+
+  mutex::scoped_lock sL(m_DataSocketMutex);
   StopReadout();
 
-
   // Resize local buffer
-  m_DataBuffer.resize(bufferSize); 
+  m_DataBuffer.resize(bufferSize);
 
-  // Opem 
+  /////////////////////////////////////////////////////////////////
+  // DoSingleRead lambda
+  std::function<void ()> DoSingleRead = [&]()
+  {
+    auto HandleRead = [&](const boost::system::error_code& error,
+                  std::size_t bytes_transferred) {
+      m_Queue.push( new dt(m_DataBuffer.begin(),
+        m_DataBuffer.begin() + bytes_transferred/sizeof(m_DataBuffer[0])) );
+      if (m_DataSocket.is_open() && !error) DoSingleRead();
+    };
+
+    boost::asio::async_read(
+          m_DataSocket,
+          boost::asio::buffer(m_DataBuffer,
+            m_DataBuffer.size()*sizeof(m_DataBuffer[0])),
+          boost::bind<void>(HandleRead,
+               boost::asio::placeholders::error,
+               boost::asio::placeholders::bytes_transferred));
+  };
+
+  // Analysis thread
+  auto AnalysisThread = [this, func]()
+  {
+    auto ConsumeFromQueue = [func] (dt* dat) {
+      func(pt(dat));
+    };
+    try {
+      while( m_DataSocket.is_open() ) {
+        if( !m_Queue.consume_one( ConsumeFromQueue ) ) {
+          boost::this_thread::sleep(boost::posix_time::milliseconds(1));
+        }
+      }
+
+      // If we get here the socket has been closed, consume the rest of the data
+      m_Queue.consume_all_no_lock( ConsumeFromQueue );
+    } catch(...) {
+      std::cerr << "Exception caught in readout, stopping socket" << std::endl;
+      CloseSocket(m_DataSocket);
+    }
+  };
+  /////////////////////////////////////////////////////////////////
+
+
+  // Open socket to read
   tcp::resolver res(IOService::Service());
-  tcp::resolver::iterator endpts = res.resolve(tcp::resolver::query(IPAddress(), "4210"));
+  tcp::resolver::iterator endpts = res.resolve(
+    tcp::resolver::query(IPAddress(), "4210"));
+
   boost::asio::connect(m_DataSocket, endpts);
   m_DataRead = 0;
+
   // Start processing thread
-  m_workerThread = boost::thread(boost::bind(&Device::AnalysisThread, this, func));
+  m_workerThread = boost::thread(AnalysisThread);
 
   DoSingleRead();
 }
 
 //-----------------------------------------------------------------
-void Device::AnalysisThread(Device::callback_functor func)
+void Device::BeginReadout(size_t bufferSize)
 {
-  boost::function< void(data_type*) > myFunc = boost::bind(&Device::ConsumeFromQueue, this, func, _1); 
-  try {
-    while( m_DataSocket.is_open() ) {
-      if( !m_Queue.consume_one( myFunc ) ) {
-        boost::this_thread::sleep(boost::posix_time::milliseconds(1));
-      }
-    } 
-    
-    // If we get here the socket has been closed, consume the rest of the data
-    m_Queue.consume_all_no_lock( myFunc );
-  } catch(...) {
-    std::cerr << "Exception caught in readout, stopping socket" << std::endl;
-    CloseSocket(m_DataSocket);
+  #define BEGINREADOUTYPE(atype) \
+    case sizeof(atype):          \
+      BeginReadout<atype>( [this] (DevTempl<atype>::ptr_type pt) { \
+        m_DataRead += pt->size();                                  \
+      }, bufferSize); break;
+  switch(ReadoutSize()) {
+    BEGINREADOUTYPE(int16_t)
+    BEGINREADOUTYPE(int32_t)
   }
 }
 
@@ -182,42 +222,6 @@ void Device::StopReadout()
 }
 
 
-//-----------------------------------------------------------------
-void Device::PushOnQueue(const Device::data_type& dat, size_t len)
-{
-  m_Queue.push( new data_type(dat.begin(), dat.begin() + len) );
-}
-
-//-----------------------------------------------------------------
-void Device::ConsumeFromQueue(Device::callback_functor func, Device::data_type* dat)
-{
-  func(ptr_type(dat));
-}
-
-//-----------------------------------------------------------------
-void Device::DoSingleRead()
-{
-  boost::asio::async_read(
-        m_DataSocket,
-        boost::asio::buffer(m_DataBuffer, m_DataBuffer.size()*sizeof(m_DataBuffer[0])),
-        boost::bind(&Device::HandleRead, this, 
-             boost::asio::placeholders::error,
-             boost::asio::placeholders::bytes_transferred));
-}
-
-//-----------------------------------------------------------------
-void Device::HandleRead(const boost::system::error_code& error,
-                std::size_t bytes_transferred)
-{
-  PushOnQueue(m_DataBuffer, bytes_transferred/sizeof(m_DataBuffer[0]));
-  if (m_DataSocket.is_open() && !error) DoSingleRead();
-}
-
-void Device::DefaultReadout(ptr_type dat) const
-{
-  m_DataRead += dat->size(); 
-}
-
 void Device::CloseSocket(Device::sock_type& sock)
 {
   IOService::Service().post( boost::bind( &sock_type::close, &sock ) );
@@ -228,6 +232,12 @@ bool Device::IsRunning() const
   // return true if running, false if not
   return m_DataSocket.is_open();
 }
+
+#define INSTANTIATE_TEMPLATE(atype) \
+template void Device::BeginReadout<atype>(Device::DevTempl<atype>::callback_functor, size_t);
+
+INSTANTIATE_TEMPLATE(int16_t)
+INSTANTIATE_TEMPLATE(int32_t)
 
 }
 
