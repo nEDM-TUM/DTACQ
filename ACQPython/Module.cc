@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <boost/python/suite/indexing/vector_indexing_suite.hpp>
 #include "numpy/arrayobject.h"
+#include "gil_state.h"
 using namespace boost::python;
 namespace bp = boost::python;
 using namespace acq;
@@ -49,33 +50,7 @@ class dev_buffer
     Device::ptr_type _ptr;
 };
 
-struct release_gil_policy
-{
-  release_gil_policy() : 
-    _currentState(PyEval_SaveThread())
-  {
-  }
 
-  ~release_gil_policy() 
-  {
-    PyEval_RestoreThread(_currentState);
-  }
-  PyThreadState* _currentState;
-};
-
-struct ensure_gil_state
-{
-  ensure_gil_state() :
-    _state(PyGILState_Ensure())
-  {
-  }
-
-  ~ensure_gil_state()
-  {
-    PyGILState_Release(_state);
-  }
-  PyGILState_STATE _state;
-};
 
 
 class PyDevice: public Device
