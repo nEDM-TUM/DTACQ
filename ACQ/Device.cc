@@ -20,20 +20,20 @@ typedef boost::asio::io_service::work work_type;
 
 class IOService {
   public:
-    static IOService& IO() 
+    static IOService& IO()
     {
-      static IOService gServiceSingleton; 
+      static IOService gServiceSingleton;
       return gServiceSingleton;
     }
 
     static io_type& Service()
     {
       return IO().m_IOService;
-    } 
+    }
 
   private:
     IOService() : m_IOWork(m_IOService),
-      m_Thread(boost::bind(&io_type::run, &m_IOService)) 
+      m_Thread(boost::bind(&io_type::run, &m_IOService))
     {
     }
     ~IOService() { m_IOService.stop(); m_Thread.join(); }
@@ -100,7 +100,7 @@ std::string Device::IPAddress() const
 }
 
 //-----------------------------------------------------------------
-std::string Device::SendCommand(const std::string& cmd) 
+std::string Device::SendCommand(const std::string& cmd)
 {
   std::string loc_cmd = cmd + "\n";
   boost::system::error_code error;
@@ -108,9 +108,9 @@ std::string Device::SendCommand(const std::string& cmd)
   boost::asio::write(m_ServiceSocket, boost::asio::buffer(loc_cmd, loc_cmd.size()));
   size_t n = boost::asio::read_until(m_ServiceSocket, buffer, ">", error);
   boost::asio::streambuf::const_buffers_type bufs = buffer.data();
-  std::string retStr( 
-     boost::asio::buffers_begin(bufs), 
-     boost::asio::buffers_begin(bufs) + n); 
+  std::string retStr(
+     boost::asio::buffers_begin(bufs),
+     boost::asio::buffers_begin(bufs) + n);
 
   // Remove the prompt
   size_t last_n = retStr.find_last_of("\n");
@@ -165,10 +165,11 @@ void Device::AnalysisThread(Device::callback_functor func)
   }
 }
 
+
 //-----------------------------------------------------------------
 void Device::StopReadout()
 {
-  mutex::scoped_lock sL(m_DataSocketMutex); 
+  mutex::scoped_lock sL(m_DataSocketMutex);
   if (m_DataSocket.is_open()) {
     CloseSocket(m_DataSocket);
   }
@@ -224,4 +225,6 @@ bool Device::IsRunning()
 }
 
 }
+
+
 
