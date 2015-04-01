@@ -1,18 +1,22 @@
+#include "ACQ/Device.hh"
 #include <boost/python.hpp>
 #include <boost/python/make_function.hpp>
 #include <boost/bind.hpp>
 #include <boost/make_shared.hpp>
 #include <boost/thread/thread.hpp> 
-#include "ACQ/Device.hh"
 #include <cstdlib>
+#include <iostream>
 #include <boost/python/suite/indexing/vector_indexing_suite.hpp>
+
+// We don't want any deprecated numpy API
+#define NPY_NO_DEPRECATED_API NPY_1_8_API_VERSION
 #include "numpy/arrayobject.h"
 #include "gil_state.h"
+
 using namespace boost::python;
 namespace bp = boost::python;
 using namespace acq;
 
-#include <iostream>
 // Wrapper for timer function parameter
 typedef boost::function< void(Device::ptr_type) > func_type;
 struct DataType_to_python_dat
