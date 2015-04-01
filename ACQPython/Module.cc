@@ -3,7 +3,7 @@
 #include <boost/python/make_function.hpp>
 #include <boost/bind.hpp>
 #include <boost/make_shared.hpp>
-#include <boost/thread/thread.hpp> 
+#include <boost/thread/thread.hpp>
 #include <cstdlib>
 #include <iostream>
 #include <boost/python/suite/indexing/vector_indexing_suite.hpp>
@@ -29,7 +29,7 @@ struct DataType_to_python_dat
     }
     static PyObject* convert(const Device::data_type& s)
     {
-      return convertObj(s).ptr(); 
+      return convertObj(s).ptr();
     }
 };
 
@@ -67,7 +67,7 @@ class PyDevice: public Device
         BeginReadout( func_type( boost::bind(&PyDevice::PyCallback, this, _1) ), buffer_size );
     }
 
-    std::string SendCommand(const std::string& cmd) 
+    std::string SendCommand(const std::string& cmd)
     {
       release_gil_policy sL;
       return Device::SendCommand(cmd);
