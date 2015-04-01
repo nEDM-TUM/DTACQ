@@ -89,6 +89,11 @@ void Device::ResetIPAddress(const std::string& ipAddr)
     }
   }
   m_numSites = m_Channels.size();
+  if (boost::lexical_cast<size_t>(SendCommand("data32")) == 0) {
+    m_ReadoutSize = 2;
+  } else {
+    m_ReadoutSize = 4;
+  }
 }
 
 //-----------------------------------------------------------------

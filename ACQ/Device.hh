@@ -36,6 +36,7 @@ class Device {
 
     size_t NumSites() const { return m_numSites; }
     size_t NumChannels(size_t site_no) const { return m_Channels[site_no]; }
+    size_t ReadoutSize() const { return m_ReadoutSize; }
   protected:
     Device& operator=(const Device&);
 
@@ -54,7 +55,6 @@ class Device {
     mutex m_DataSocketMutex;
     queue_type m_Queue;
 
-    size_t m_numSites;
     chan_number_type m_Channels;
 
     void PushOnQueue(const data_type& dat, size_t len);
@@ -66,6 +66,8 @@ class Device {
     void DoSingleRead();
     void HandleRead(const boost::system::error_code& err,
                     std::size_t bytes_transferred);
+    size_t m_numSites;
+    size_t m_ReadoutSize;
 
     void CloseSocket(sock_type&);
 
