@@ -28,9 +28,9 @@ AC_PROG_MKDIR_P
 #########################################################################
 # Check the compiler
 #########################################################################
-AC_PROG_CC
-AC_PROG_CXX
-AC_PROG_CXXCPP
+AC_LANG([C++])
+m4_include(ax_cxx_compile_stdcxx_11.m4)
+AX_CXX_COMPILE_STDCXX_11(noext)
 #AC_PROG_LIBTOOL
 AC_SUBST(LD)
 AS_IF([test x"${build_cpu}" = "xx86_64"],[

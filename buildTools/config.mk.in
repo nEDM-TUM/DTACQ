@@ -7,12 +7,9 @@ SOMAKER = @CXX@
 ARFLAGS = rv
 
 AWK     = @AWK@
-CC      = @CC@
-CFLAGS  += @CFLAGS@
 #CPP     = @CPP@
 CPPFLAGS+= @CPPFLAGS@
 CXX     = @CXX@
-CXXCPP  = @CXXCPP@
 CXXFLAGS+= @CXXFLAGS@
 ECHO    = @AX_ECHO@
 ECHO_N  = @AX_ECHO_N@
