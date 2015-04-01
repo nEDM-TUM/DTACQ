@@ -14,7 +14,6 @@
 #include "gil_state.h"
 
 using namespace boost::python;
-namespace bp = boost::python;
 using namespace acq;
 
 //-----------------------------------------------------------------
@@ -124,7 +123,9 @@ BOOST_PYTHON_MODULE(pyacq)
     .def("NumSites", &PyDevice::NumSites)
     .def("NumChannels", &PyDevice::NumChannels)
     .def("IsRunning", &PyDevice::IsRunning)
-    .def("BeginReadout", &PyDevice::beginReadoutWrapper, ( bp::arg( "function" ), bp::arg( "buffer_size" ) )); 
+    .def("ReadoutSize", &PyDevice::ReadoutSize)
+    .def("BeginReadout", &PyDevice::beginReadoutWrapper,
+      ( arg( "function" ), arg( "buffer_size" ) ));
 
   define_buffer<int16_t>("DevBuffer_16");
   define_buffer<int32_t>("DevBuffer_32");
