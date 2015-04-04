@@ -128,8 +128,31 @@ void Device::BeginReadout(typename Device::DevTempl<T>::callback_functor func, s
   typedef typename DevTempl<T>::data_type dt;
   typedef typename DevTempl<T>::ptr_type pt;
   typedef bounded_buffer< dt* > queue_type;
+
+  // Static so they don't go out of scope.  *Note*, these are *class* variables
+  // for a particular readout type (uint32/uint16)
   static dt m_DataBuffer;
   static queue_type m_Queue(4000);
+  static std::function<void ()> DoSingleRead;
+
+  DoSingleRead = [&]()
+  {
+    auto HandleRead = [&](const boost::system::error_code& error,
+                  std::size_t bytes_transferred) {
+      m_Queue.push( new dt(m_DataBuffer.begin(),
+        m_DataBuffer.begin() + bytes_transferred/sizeof(m_DataBuffer[0])) );
+      if (error == 0) {
+        DoSingleRead();
+      }
+    };
+
+    boost::asio::async_read(
+          m_DataSocket,
+          boost::asio::buffer(m_DataBuffer,
+            m_DataBuffer.size()*sizeof(m_DataBuffer[0])),
+            HandleRead);
+  };
+
 
   assert(ReadoutSize() == sizeof(m_DataBuffer[0]));
 
@@ -141,26 +164,8 @@ void Device::BeginReadout(typename Device::DevTempl<T>::callback_functor func, s
 
   /////////////////////////////////////////////////////////////////
   // DoSingleRead lambda
-  std::function<void ()> DoSingleRead = [&]()
-  {
-    auto HandleRead = [&](const boost::system::error_code& error,
-                  std::size_t bytes_transferred) {
-      m_Queue.push( new dt(m_DataBuffer.begin(),
-        m_DataBuffer.begin() + bytes_transferred/sizeof(m_DataBuffer[0])) );
-      if (m_DataSocket.is_open() && !error) DoSingleRead();
-    };
-
-    boost::asio::async_read(
-          m_DataSocket,
-          boost::asio::buffer(m_DataBuffer,
-            m_DataBuffer.size()*sizeof(m_DataBuffer[0])),
-          boost::bind<void>(HandleRead,
-               boost::asio::placeholders::error,
-               boost::asio::placeholders::bytes_transferred));
-  };
-
   // Analysis thread
-  auto AnalysisThread = [this, func]()
+  auto AnalysisThread = [&,this,func]()
   {
     auto ConsumeFromQueue = [func] (dt* dat) {
       func(pt(dat));
