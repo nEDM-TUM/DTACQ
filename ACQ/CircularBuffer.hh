@@ -37,19 +37,26 @@ public:
   {
       push_front(item);
   }
-  void pop_back(value_type* pItem) {
+  bool pop_back(value_type* pItem) {
       boost::mutex::scoped_lock lock(m_mutex);
-      m_not_empty.wait(lock, boost::bind(&bounded_buffer<value_type>::is_not_empty, this));
+      if (!m_not_empty.timed_wait(lock,
+          boost::posix_time::milliseconds(10),
+          [this] () { return is_not_empty(); })) {
+          return false;
+      }
       *pItem = m_container[--m_unread];
       lock.unlock();
       m_not_full.notify_one();
+      return true;
   }
 
   template <typename Functor>
   bool consume_one(Functor & f)
   {
       value_type element;
-      pop_back(&element);
+      if (!pop_back(&element)) {
+          return false;
+      }
       f(element);
       return true;
   }
