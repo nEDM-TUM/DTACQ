@@ -5,8 +5,8 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/thread.hpp>
 #include <boost/thread/mutex.hpp>
-//#include <boost/lockfree/queue.hpp>
 #include <boost/function.hpp>
+#include <boost/scoped_ptr.hpp>
 #include "CircularBuffer.hh"
 
 namespace acq {
@@ -25,6 +25,7 @@ class Device {
 
     Device(const std::string& ipAddr = "");
     Device(const Device&);
+    ~Device();
 
     std::string SendCommand(const std::string& cmd);
 
@@ -53,11 +54,18 @@ class Device {
     Device& operator=(const Device&);
 
     typedef boost::asio::ip::tcp::socket sock_type;
+    typedef boost::scoped_ptr<sock_type> sock_type_ptr;
     typedef boost::recursive_mutex mutex;
     typedef std::vector<size_t> chan_number_type;
+    typedef boost::asio::io_service io_type;
+    typedef boost::asio::io_service::work work_type;
+    typedef boost::scoped_ptr<work_type> work_type_ptr;
+    
+    io_type     m_IOService;
+    work_type_ptr   m_IOWork;
 
-    sock_type m_ServiceSocket;
-    sock_type m_DataSocket;
+    sock_type_ptr m_ServiceSocket;
+    sock_type_ptr m_DataSocket;
     mutable size_t m_DataRead;
 
     boost::thread m_workerThread;
@@ -67,7 +75,8 @@ class Device {
     size_t m_numSites;
     size_t m_ReadoutSize;
 
-    void CloseSocket(sock_type&);
+    boost::thread m_IOThread;
+    bool m_isRunning;
 
 };
 
