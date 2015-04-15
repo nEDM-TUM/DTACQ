@@ -25,12 +25,21 @@ struct DataType_to_python_dat
     static object convertObj(const dt& s)
     {
         npy_intp p = (npy_intp)s.size();
-        PyObject* py_buffer = PyArray_SimpleNewFromData(
-          1, // dimension
-          &p,// array of dimension sizes
-          (sizeof(s[0]) == 2) ? NPY_INT16 : NPY_INT32, // type
-          (void*)&s[0] // address
-        );
+        PyObject* py_buffer;
+        if (p > 0) {
+          py_buffer = PyArray_SimpleNewFromData(
+            1, // dimension
+            &p,// array of dimension sizes
+            (sizeof(s[0]) == 2) ? NPY_INT16 : NPY_INT32, // type
+            (void*)&s[0] // address
+          );
+        } else {
+          py_buffer = PyArray_SimpleNew(
+            1, // dimension
+            &p,// array of dimension sizes
+            (sizeof(s[0]) == 2) ? NPY_INT16 : NPY_INT32 // type
+          );
+        }
         return boost::python::object(handle<>(py_buffer));
     }
     static PyObject* convert(const dt& s)
@@ -69,13 +78,14 @@ class PyDevice: public Device
     void beginReadoutWrapper( object function,
       uint64_t buffer_size = 1024*1024 )
     {
+        _func = function;
         #define READOUTTYPE(atype)                            \
         case sizeof(atype):                                   \
-          BeginReadout<atype>( [function]                     \
+          BeginReadout<atype>( [this]                         \
               (DevTempl<atype>::ptr_type pt) {                \
             ensure_gil_state gS;                              \
             typedef dev_buffer<atype> db;                     \
-            function(boost::make_shared<db>(pt));             \
+            _func(boost::make_shared<db>(pt));                \
           }, buffer_size); break;
 
         switch( ReadoutSize() ) {
@@ -95,6 +105,8 @@ class PyDevice: public Device
       release_gil_policy sL;
       return Device::StopReadout();
     }
+  protected:
+    object _func;
 
 };
 
