@@ -44,7 +44,12 @@ void Device::ResetIPAddress(const std::string& ipAddr)
   // Open up the command service
   tcp::resolver res(m_IOService);
   tcp::resolver::iterator endpts = res.resolve(tcp::resolver::query(ipAddr, "4220"));
-  boost::asio::connect(*m_ServiceSocket, endpts);
+  try {
+    boost::asio::connect(*m_ServiceSocket, endpts);
+  } catch (...) {
+    Cleanup();
+    throw;  // Throw up to top level
+  }
   //m_ServiceSocket.set_option( boost::asio::socket_base::keep_alive(true) );
   SendCommand("prompt on");
   m_numSites = 0;
@@ -223,6 +228,12 @@ bool Device::IsRunning() const
 Device::~Device()
 {
   std::cout << " Destructing device: " << IPAddress() << std::endl;
+  Cleanup();
+}
+
+//-----------------------------------------------------------------
+void Device::Cleanup()
+{
   m_ServiceSocket.reset();
   m_DataSocket.reset();
   m_IOWork.reset();

@@ -29,7 +29,6 @@ class Device {
 
     std::string SendCommand(const std::string& cmd);
 
-    void ResetIPAddress(const std::string& ipAddr);
     std::string IPAddress() const;
 
     void BeginReadout(size_t bufferSize = 1024*1024);
@@ -77,6 +76,9 @@ class Device {
 
     boost::thread m_IOThread;
     bool m_isRunning;
+
+    void ResetIPAddress(const std::string& ipAddr);
+    void Cleanup();
 
 };
 
