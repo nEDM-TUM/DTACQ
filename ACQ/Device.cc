@@ -147,7 +147,12 @@ void Device::BeginReadout(typename Device::DevTempl<T>::callback_functor func, s
       
     } catch(...) {
       std::cerr << "Exception caught in readout, stopping socket" << std::endl;
-      m_DataSocket->shutdown(sock_type::shutdown_both); 
+      try{
+        // This can also throw, e.g. if the socket is not currently open, simply catch.
+        m_DataSocket->shutdown(sock_type::shutdown_both);
+      } catch(boost::system::system_error& e) {
+        std::cerr << "Exception in shutdown: " << e.what() << std::endl;
+      }
     }
     m_isRunning = false;
   };
@@ -212,8 +217,13 @@ void Device::BeginReadout(size_t bufferSize)
 void Device::StopReadout()
 {
   mutex::scoped_lock sL(m_DataSocketMutex);
-  if (m_DataSocket) {
-    m_DataSocket->shutdown(sock_type::shutdown_both);
+  if (m_isRunning) {
+    try {
+      m_DataSocket->shutdown(sock_type::shutdown_both);
+    } catch(boost::system::system_error& ec) {
+      std::cout << "Error seen by shutdown, was it already shutdown?" << std::endl;
+      std::cout << ec.what() << std::endl;
+    }
   }
   m_workerThread.join();
 }
