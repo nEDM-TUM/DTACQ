@@ -38,8 +38,8 @@ Device::Device(const Device& dev) :
 void Device::ResetIPAddress(const std::string& ipAddr)
 {
   // Close both services
-  m_ServiceSocket.reset( new sock_type(m_IOService) ); 
-  m_DataSocket.reset(); 
+  m_ServiceSocket.reset( new sock_type(m_IOService) );
+  m_DataSocket.reset();
 
   // Open up the command service
   tcp::resolver res(m_IOService);
@@ -114,8 +114,8 @@ void Device::BeginReadout(typename Device::DevTempl<T>::callback_functor func, s
   static std::function<void ()> DoSingleRead;
 
   // Empty the queue
-  auto emptyQ = [] (dt*) {; }; 
-  m_Queue.consume_all_no_lock(emptyQ); 
+  auto emptyQ = [] (dt*) {; };
+  m_Queue.consume_all_no_lock(emptyQ);
 
   mutex::scoped_lock sL(m_DataSocketMutex);
   m_DataSocket.reset( new sock_type( m_IOService ) );
@@ -144,7 +144,7 @@ void Device::BeginReadout(typename Device::DevTempl<T>::callback_functor func, s
     } catch (socket_complete&) {
       // If we get here the socket has been closed, consume the rest of the data
       std::cout << "Readout complete" << std::endl;
-      
+
     } catch(...) {
       std::cerr << "Exception caught in readout, stopping socket" << std::endl;
       try{
