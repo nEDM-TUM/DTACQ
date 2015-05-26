@@ -3,6 +3,7 @@
 """
 
 from autobahn.twisted.websocket import WebSocketServerProtocol
+from autobahn.websocket import http
 import pyacq
 import time
 import numpy
@@ -17,156 +18,269 @@ from twisted.python import log
 from twisted.internet import reactor, defer, threads
 import time
 import traceback
+from types import MethodType
+from card_communicate import execute_cmd
 
 
 class ReadoutException(Exception):
     pass
 
 _db_url = "http://localhost:5984"
+class ReleaseDigitizerNow(Exception):
+    pass
+
 _db_name = "nedm%2Fmeasurements"
 _un = "digitizer_writer"
 _pw="""pw"""
 
-def _performUpload(**kw):
-    doc_to_post = kw.get("doc_to_save",{}) 
-    doc_to_post["type"] = "measurement"
 
-    # Post the doc
-    acct = cloudant.Account(uri=_db_url) 
-    acct.login(_un, _pw)
-    db = acct[_db_name]
-    resp = db.design("nedm_default").post("_update/insert_with_timestamp",params=doc_to_post).json()
 
-    if "ok" not in resp:
-        return "Measurement could not be saved"
+class UploadClass(object):
+   def __init__(self, doc_to_save):
+     self.doc_to_post = doc_to_save
+     self.doc_to_post["type"] = "measurement"
+     self.deferred = None
 
-    if "filename" not in doc_to_post: 
-        resp["type"] = "DocUpload"
-        return resp 
+   def __acct(self):
+     acct = cloudant.Account(uri=_db_url)
+     acct.login(_un, _pw)
+     db = acct[_db_name]
+     return acct, db
 
-    fn = doc_to_post["filename"] 
-    doc = db[resp['id']]
-    rev = doc.get().json()['_rev']
-    with open(fn, 'rb') as f:
-        resp = doc.attachment(fn + "?rev=" + rev).put(data=f,headers={'content-type' : 'application/octet-stream'}).json()
+   def __performUploadInThread(self):
+     acct, db = self.__acct()
+     resp = db.design("nedm_default").post("_update/insert_with_timestamp",params=self.doc_to_post).json()
 
-    if "ok" in resp:
-        resp["url"] = "/_couchdb/{}/{}/{}".format(_db_name,resp["id"],fn)  
-        resp["file_name"] = fn 
-        resp["type"] = "FileUpload"
-    return resp
+     if "ok" not in resp:
+         return "Measurement settings could not be saved in DB"
+     resp["type"] = "DocUpload"
+     return resp
 
+   def performUpload(self):
+     self.deferred = threads.deferToThread(self.__performUploadInThread)
+     return self.deferred
+
+   def shouldUploadFile(self):
+     return "filename" in self.doc_to_post and self.deferred is not None
+
+
+   def __performUploadFileInThread(self, resp):
+     if "ok" not in resp:
+         return "Document not saved!"
+     acct, db = self.__acct()
+     fn = self.doc_to_post["filename"]
+     doc = db[resp['id']]
+     rev = doc.get().json()['_rev']
+
+     with open(fn, 'rb') as f:
+         resp = doc.attachment(fn + "?rev=" + rev).put(data=f,headers={'content-type' : 'application/octet-stream'}).json()
+
+     if "ok" in resp:
+         resp["url"] = "/_couchdb/{}/{}/{}".format(_db_name,resp["id"],fn)
+         resp["file_name"] = fn
+         resp["type"] = "FileUpload"
+         os.remove(fn)
+     return resp
+
+   def uploadFile(self):
+     if not self.shouldUploadFile():
+       return "File will not be saved"
+     self.deferred.addCallback(lambda x: threads.deferToThread(self.__performUploadFileInThread, x))
+     return self.deferred
 
 class ReadoutObj(object):
     def __init__(self, ip_addr):
         self.ip_addr = ip_addr
         dev = pyacq.Device(str(ip_addr))
         # Tell device to transmit verification data in the stream
-        dev.SendCommand("set.site 0 spad 1,2,0")
-        dev.SendCommand("run0 1,2")
         # Available sites in the device
+        model = dev.SendCommand("get.site 1 MODEL").split(" ")[0]
         self.available_modules = dict([(i+1, dev.NumChannels(i)) for i in range(dev.NumSites())])
+        self.readout_size = dev.ReadoutSize()
+        dev.SendCommand("set.site 0 spad 1,2,0")
+        if model == "ACQ425ELF":
+            self._validateData = self._validateData425
+            self.minClkDiv = 50
+            self.maxClkDiv = 50
+            self.clk_divider = 1
+            self.bit_right_shift = 0
+            self.max_buffer = 2*1024*1024
+            self.gain_settings = { 0 : "x1", 1 : "x2", 2 : "x4", 3 : "x8" }
+        elif model == "ACQ437ELF":
+            self._validateData = self._validateData435
+            self.minClkDiv = 4
+            if int(dev.SendCommand("get.site 1 hi_res_mode")) == 0:
+              self.clk_divider = 256
+            else:
+              self.clk_divider = 512
+            self.bit_right_shift = 8
+            self.max_buffer = 1*1024*1024
+            self.gain_settings = { 0 : "x1", 1 : "x2", 2 : "x5", 3 : "x10" }
+        else:
+            raise ReadoutException("Unknown MODEL {}".format(model))
         # total number of channels available
-        self.total_ch =  int(dev.SendCommand("NCHAN")) 
-        self.actual_ch =  sum(self.available_modules.values())
-        self.check_word = self.actual_ch
+        self.min_buffer = 1*1024*1024/self.readout_size
         self.dev = dev
 
         self.alock = threading.Lock()
         self.cond = threading.Condition(self.alock)
-        self.obj_buffer = None 
+        self.obj_buffer = None
         self.open_file = None
         self.isRunning = False
         self.should_save = False
-        self.should_upload = False
+        self.upload_class = None
         self._cl = []
 
     def _add_to_list(self, al):
         self.cond.acquire()
         self.obj_buffer = al
-        self.cond.notify()
         self.cond.release()
-    
+
     def _pop_from_list(self):
         anobj = None
         self.cond.acquire()
-        while self.obj_buffer is None: 
-            self.cond.wait(1.0)
-            if self._exc is not None:
-                self.obj_buffer = None
-                break
-        anobj = self.obj_buffer 
-        self.obj_buffer = None 
+        anobj = self.obj_buffer
+        self.obj_buffer = None
         self.cond.release()
 
-        if anobj is None or len(anobj) > 0:
-            return anobj
-        return self._pop_from_list()
-     
+        if anobj is not None and self.bit_right_shift != 0:
+            anobj = numpy.right_shift(anobj, self.bit_right_shift)
+        return anobj
+
     def _ensureNotRunning(self):
         if self.isRunning:
             raise ReadoutException("Cannot call function while readout running")
-    
+
+    def rebootCard(self):
+        execute_cmd(self.ip_addr, "reboot")
+        raise ReleaseDigitizerNow()
+
+    def readCurrentGains(self):
+        g = lambda x: dict([(i, int(x[i])) for i in range(len(x))])
+        return dict([(m,g(self.dev.SendCommand("get.site {} gains".format(m))))
+                       for m in self.available_modules])
+
     def _ensureRunning(self):
         if not self.isRunning:
             raise ReadoutException("Cannot call function while readout is idle")
 
     def getChannels(self, **kw):
-	return self.total_ch
+        try:
+            return dict(mods=self.available_modules,
+                      divide=self.clk_divider,
+             current_clk_div=int(self.dev.SendCommand("get.site 1 clkdiv")),
+                readout_size=self.readout_size,
+                  max_buffer=self.max_buffer,
+                  min_buffer=self.min_buffer,
+               gain_settings=self.gain_settings,
+               current_gains=self.readCurrentGains(),
+                      sysclk=int(self.dev.SendCommand("get.site 1 sysclkhz")))
+        except Exception as e:
+            # Getting here means we can't continue, reboot
+            self.rebootCard()
 
     def closeFile(self, **kw):
-        if self.open_file is not None: self.open_file.close()      
+        if self.open_file is not None: self.open_file.close()
         self.open_file = None
 
     def setClkDiv(self, **kw):
         self._ensureNotRunning()
         clkdiv = int(kw.get("clkdiv", 1000))
-        return self.dev.SendCommand("set.site 1 clkdiv " + str(clkdiv))
+        if clkdiv < self.minClkDiv:
+            raise ReadoutException("Clkdiv must not be below the min ({})".format(self.minClkDiv))
+        self.dev.SendCommand("set.site 1 clkdiv " + str(clkdiv))
+        return self.dev.SendCommand("get.site 1 clkdiv")
+
+
+    def performCmd(self, **kw):
+        cmd = kw.get("cmd", [])
+        if isinstance(cmd, list):
+            return dict([(c, self.dev.SendCommand(str(c))) for c in cmd])
+        else:
+            return self.dev.SendCommand(cmd)
+
+    def _validateData425(self, v):
+        ch = self.total_ch
+        full_pts = len(v)/ch
+        last_set = v[(full_pts-1)*ch:]
+        cw = self.check_word
+        total_counter = numpy.fromstring(numpy.array(last_set[cw:cw+2]).tostring(), numpy.uint32)[0]
+        self.last_counter += full_pts
+        self.last_counter %= 0xFFFFFFFF
+        if self.last_counter != (total_counter % 0xFFFFFFFF):
+            raise ReadoutException("ReadoutBuffer corrupted: expected({}) seen({})".format(self.last_counter, total_counter))
+
+    def _validateData435(self, v):
+        ch = self.total_ch
+        full_pts = len(v)/ch
+        last_set = v[(full_pts-1)*ch:]
+        cw = self.check_word
+        total_counter = last_set[cw]
+        self.last_counter += full_pts
+        self.last_counter %= 0xFFFFFFFF
+        if self.last_counter != (total_counter % 0xFFFFFFFF):
+            raise ReadoutException("ReadoutBuffer corrupted: expected({}) seen({})".format(self.last_counter, total_counter))
+
 
     def startReadout(self, **kw):
         self._ensureNotRunning()
+
+        ml = kw.get("mod_list", [])
+        mods = ','.join(map(str,ml))
+        if len(ml) == 0:
+            raise ReadoutException("Must select modules to readout")
+        self.dev.SendCommand("run0 " + mods)
+        self.total_ch =  int(self.dev.SendCommand("NCHAN"))
+        self.actual_ch =  sum([self.available_modules[m] for m in ml])
+        self.check_word = self.actual_ch
+
         buffer_size = kw.get("buffer_size", 1*1024*1024)
         bytes_per_frame = self.total_ch*2
         buffer_size += (bytes_per_frame - (buffer_size % bytes_per_frame))
         self.last_offset = 0
-        self.should_upload = False 
-        self.last_counter = 0 
+        self.upload_class = None
+        self.last_counter = 0
         self._exc = None
         if kw.get("should_upload", False):
-            self.should_upload = True
             dt = str(datetime.datetime.utcnow())
-            freq = int(self.dev.SendCommand("get.site 1 sysclkhz"))/int(self.dev.SendCommand("get.site 1 clkdiv"))
-            header = { "channels" : self.total_ch, 
-                       "log" : kw.get("log", ""), 
-                       "bit_depth" : 2, 
-                       "bit_mask" : 0xff, 
-                       "ip" : self.ip_addr, 
-                       "date" : dt, 
-                       "freq_hz" : freq, 
-                       "measurement_name" : "Digitizer " + self.ip_addr, 
-                       "channel_list" : kw.get("channel_list", [])
+            freq = int(self.dev.SendCommand("get.site 1 sysclkhz"))/int(self.dev.SendCommand("get.site 1 clkdiv"))/float(self.clk_divider)
+            header = { "channels" : self.total_ch,
+                       "log" : kw.get("log", ""),
+                       "byte_depth" : self.readout_size,
+                       "bit_shift" : self.bit_right_shift,
+                       "ip" : self.ip_addr,
+                       "date" : dt,
+                       "freq_hz" : freq,
+                       "measurement_name" : kw.get("measurement_name", "Digitizer " + self.ip_addr),
+                       "channel_list" : kw.get("channel_list", []),
+                       "current_gains" : self.readCurrentGains(),
+                       "gain_conversion" : self.gain_settings
                      }
             self._cl = header["channel_list"]
             for k, v in kw.get("logitems", {}).items():
                 header[k] = v
             if kw.get("should_save", False):
-                file_name = dt + ".dig" 
-                if os.path.exists(file_name): 
+                file_name = dt + ".dig"
+                if os.path.exists(file_name):
                     raise ReadoutException("'%s' exists, not overwriting" % file_name)
                 self.open_file = open(file_name, "wb")
-                header["filename"] = file_name 
+                header["filename"] = file_name
                 header_b = bytearray(json.dumps(header))
                 self.open_file.write(bytearray(ctypes.c_uint32(len(header_b))) + header_b)
             self.doc_to_save = header
+            self.upload_class = UploadClass(self.doc_to_save)
+            self.upload_class.performUpload()
+
         self.dev.BeginReadout(function=self, buffer_size=buffer_size)
         self.isRunning = True
 
-        def waitToFinish(s, d=None): 
+        def waitToFinish(s, d=None):
             if not d:
                 d = defer.Deferred()
-            if s.dev.IsRunning():
+            if hasattr(s, "dev") and s.dev.IsRunning():
                 reactor.callLater(1, waitToFinish, s, d)
             else:
+                self.isRunning = False
                 if not s._exc:
                     d.callback(dict(type="JobFinished", msg="Readout job completed"))
                 else:
@@ -178,9 +292,8 @@ class ReadoutObj(object):
         self._ensureRunning()
         self.dev.StopReadout()
         self.closeFile()
-        self.isRunning = False
-        if self.should_upload:
-            return threads.deferToThread(_performUpload, doc_to_save=self.doc_to_save)
+        if self.upload_class and self.upload_class.shouldUploadFile():
+            return self.upload_class.uploadFile()
 
     def readBuffer(self, **kw):
         self._ensureRunning()
@@ -191,30 +304,33 @@ class ReadoutObj(object):
         header = numpy.array(header, dtype=numpy.int32)
         header = header.tostring()
         al = self._pop_from_list()
-        if al is None:
+        if al is None and self._exc is not None:
             raise ReadoutException("Readout unexpectedly ended!")
-        return header + numpy.array([al[ch::self.total_ch] for ch in chans]).tostring()
+        if al is not None:
+            return header + numpy.array([al[ch::self.total_ch] for ch in chans]).tostring()
+        return header
 
-    def _validateData(self, v):
-        ch = self.total_ch
-        full_pts = len(v)/ch
-        last_set = v[(full_pts-1)*ch:]
-        cw = self.check_word
-        total_counter = numpy.fromstring(numpy.array(last_set[cw:cw+2]).tostring(), numpy.uint32)[0]
-        self.last_counter += full_pts
-        self.last_counter %= 0xFFFFFFFF
-        if self.last_counter != (total_counter % 0xFFFFFFFF):
-            raise ReadoutException("ReadoutBuffer corrupted")
-        
+
     def _writeToFile(self, v, afile, ch_list):
-        ch = self.total_ch
-        t = [v[c::ch] for c in ch_list]
-        numpy.array(t).T.tofile(afile)
+        try:
+            ch = self.total_ch
+	    # if we get stopped, it's possible we don't have all the data
+            # make sure we're aligned
+            at_end = len(v) % ch
+            if at_end != 0:
+                # truncating end
+                v = v[:-at_end]
+	    t = numpy.array([v[c::ch] for c in ch_list])
+            t.T.tofile(afile)
+        except Exception as e:
+            print e, len(t), t.T, afile, ch, len(v), v, ch_list
+            raise
 
     def __call__(self, x):
         try:
+           if len(x) == 0: return
            v = x.vec()
-           if self.last_offset != 0: 
+           if self.last_offset != 0:
                raise ReadoutException("Buffer not aligned")
            self._validateData(v)
            if self.open_file:
@@ -223,33 +339,33 @@ class ReadoutObj(object):
            start_pt = (ch - self.last_offset) % ch
            end_pt = (len(v)-start_pt) % ch
            t = v[start_pt:]
-           self.last_offset += end_pt 
+           self.last_offset += end_pt
            self._add_to_list(t)
         except Exception as e:
            self._exc = traceback.format_exc()
-           print self._exc 
+           print self._exc
            raise
 
     def safeShutdown(self):
         if self.isRunning: self.stopReadout()
-        
+        del self.dev
+
 available_urls = [
 		"digitizer.1.nedm1",
 		"digitizer.2.nedm1"
 ]
 
-
 class ShipData(WebSocketServerProtocol):
    _readoutObjects = {}
-   _connectedClients = set() 
-   def onMessage(self, payload, isBinary): 
-       retDic = {} 
+   _connectedClients = set()
+   def onMessage(self, payload, isBinary):
+       retDic = {}
        retVal = None
        try:
          mess = json.loads(payload)
          retDic["cmd"] = mess["cmd"]
 	 obj = self
-	 if "ip" in mess: 
+	 if "ip" in mess:
            # Means we are referencing a digitizer
            ro = self.__class__._readoutObjects
            if self not in ro:
@@ -259,19 +375,23 @@ class ShipData(WebSocketServerProtocol):
          args = mess.get("args", {})
          retVal = getattr(obj, mess["cmd"])(**args)
          retDic["ok"] = True
+       except ReleaseDigitizerNow:
+         self.announce("Digitizer release requested by program")
+         self.onMessage(json.dumps({ "cmd" : "releaseDigitizerControl"}), False)
+         return
        except Exception as e:
-         retDic["error"]=traceback.format_exc()
-         print retDic["error"]
+         retDic["error"]=traceback.format_exc(limit=1)
+         print traceback.format_exc()
          pass
 
-       if isinstance(retVal, defer.Deferred): 
+       if isinstance(retVal, defer.Deferred):
            # handle deferred results especially
            retVal.addCallback(self.announce)
            retVal = None
 
        if "embed" in mess and retVal is not None:
          retDic["result"] = retVal
-       retDic = self._buildHeader(retDic) 
+       retDic = self._buildHeader(retDic)
        if "embed" not in mess and retVal is not None:
          retDic += retVal
        self.sendMessage(retDic, isBinary = True)
@@ -280,10 +400,10 @@ class ShipData(WebSocketServerProtocol):
        ip = kw.get("ip_addr")
        ro = self.__class__._readoutObjects
        if self in ro:
-           if ro[self].ip_addr == ip: return 
+           if ro[self].ip_addr == ip: return
            raise ReadoutException("Only one digitizer allowed at a time, release your current control")
 
-       inv_map = dict([(v.ip_addr,k) for k,v in ro.items()]) 
+       inv_map = dict([(v.ip_addr,k) for k,v in ro.items()])
        if ip in inv_map:
            raise ReadoutException("Digitizer already controlled elsewhere ({})".format(inv_map[ip].req.peer))
 
@@ -291,53 +411,56 @@ class ShipData(WebSocketServerProtocol):
          raise ReadoutException("'%s' not available" % ip)
        # OK, we can give control
        ro[self] = ReadoutObj(ip)
-           
 
-   def releaseDigitizerControl(self, **kw): 
+
+   def releaseDigitizerControl(self, **kw):
        ro = self.__class__._readoutObjects
-       if self in ro: 
+       if self in ro:
            ro[self].safeShutdown()
            ip = ro[self].ip_addr
-           del ro[self] 
+           del ro[self]
            for s in self.__class__._connectedClients:
                if s == self: continue
                s.announce("'{}' digitizer released by '{}'".format(ip,self.req.peer))
-   
-   def announce(self, msg):             
+
+   def announce(self, msg):
        self.sendMessage(self._buildHeader(dict(cmd="announce",msg=msg,ok=True)), isBinary = True)
-   
+
 
    def _buildHeader(self, hdr):
        hdr = json.dumps(hdr)
        while len(hdr) % 4 != 0:
          hdr += " "
-       return numpy.array([len(hdr)], dtype=numpy.int32).tostring() + hdr 
+       return numpy.array([len(hdr)], dtype=numpy.int32).tostring() + hdr
 
    def onConnect(self, request):
+      pr = request.peer
+      #if pr.split(':')[1] != "192.168.1.113": raise HttpException("Currently under work")
       self.__class__._connectedClients.add(self)
       self.req = request
-      print("Client connecting: {}".format(request.peer))
+      print("Client connecting: {}".format(pr))
 
    def onOpen(self):
       print("WebSocket connection open.")
 
    def onClose(self, wasClean, code, reason):
       self.releaseDigitizerControl()
-      self.__class__._connectedClients.remove(self)
-      print("WebSocket connection closed: {}".format(reason))
+      try:
+        self.__class__._connectedClients.remove(self)
+      except: pass
 
    def initializeWebPage(self):
       return dict(urls=available_urls)
-        
+
 
 if __name__ == '__main__':
    import sys
- 
+
    log.startLogging(sys.stdout)
- 
+
    from autobahn.twisted.websocket import WebSocketServerFactory
    factory = WebSocketServerFactory()
    factory.protocol = ShipData
 
-   reactor.listenTCP(9000, factory)
+   reactor.listenTCP(port=9000, factory=factory)
    reactor.run()
