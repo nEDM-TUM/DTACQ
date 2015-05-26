@@ -314,13 +314,13 @@ class ReadoutObj(object):
     def _writeToFile(self, v, afile, ch_list):
         try:
             ch = self.total_ch
-	    # if we get stopped, it's possible we don't have all the data
+            # if we get stopped, it's possible we don't have all the data
             # make sure we're aligned
             at_end = len(v) % ch
             if at_end != 0:
                 # truncating end
                 v = v[:-at_end]
-	    t = numpy.array([v[c::ch] for c in ch_list])
+            t = numpy.array([v[c::ch] for c in ch_list])
             t.T.tofile(afile)
         except Exception as e:
             print e, len(t), t.T, afile, ch, len(v), v, ch_list
@@ -351,8 +351,8 @@ class ReadoutObj(object):
         del self.dev
 
 available_urls = [
-		"digitizer.1.nedm1",
-		"digitizer.2.nedm1"
+                "digitizer.1.nedm1",
+                "digitizer.2.nedm1"
 ]
 
 class ShipData(WebSocketServerProtocol):
@@ -364,8 +364,8 @@ class ShipData(WebSocketServerProtocol):
        try:
          mess = json.loads(payload)
          retDic["cmd"] = mess["cmd"]
-	 obj = self
-	 if "ip" in mess:
+         obj = self
+         if "ip" in mess:
            # Means we are referencing a digitizer
            ro = self.__class__._readoutObjects
            if self not in ro:
