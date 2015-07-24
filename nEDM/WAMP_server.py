@@ -175,7 +175,7 @@ class ReadoutObj(object):
 
     def _add_to_list(self, al):
         self.cond.acquire()
-        self.obj_buffer = al
+        self.obj_buffer = numpy.copy(al)
         self.cond.release()
 
     def _pop_from_list(self):
