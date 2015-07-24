@@ -138,6 +138,7 @@ class ReadoutObj(object):
         self.available_modules = dict([(i+1, dev.NumChannels(i)) for i in range(dev.NumSites())])
         self.readout_size = dev.ReadoutSize()
         dev.SendCommand("set.site 0 spad 1,2,0")
+        self.min_frequency = 5000
         if model == "ACQ425ELF":
             self._validateData = self._validateData425
             self.minClkDiv = 50
@@ -161,6 +162,7 @@ class ReadoutObj(object):
         # total number of channels available
         self.min_buffer = 1*1024*1024/self.readout_size
         self.dev = dev
+        self.useExternalClock()
 
         self.alock = threading.Lock()
         self.cond = threading.Condition(self.alock)
@@ -191,6 +193,21 @@ class ReadoutObj(object):
         if self.isRunning:
             raise ReadoutException("Cannot call function while readout running")
 
+    def useExternalClock(self, freq_in_hz=None):
+        if freq_in_hz is None:
+            self.ext_frequency = 0
+            self.performCmd(cmd = [
+                "set.site 0 fpmux=xclk",
+                "set.site 1 clk=0,0,0",
+            ])
+        else:
+            self.ext_frequency = freq_in_hz
+            self.performCmd(cmd = [
+                "set.site 0 fpmux=fpclk",
+                "set.site 1 clk=1,0,1",
+            ])
+        return self.ext_frequency
+
     def rebootCard(self):
         execute_cmd(self.ip_addr, "reboot")
         raise ReleaseDigitizerNow()
@@ -213,6 +230,7 @@ class ReadoutObj(object):
                   max_buffer=self.max_buffer,
                   min_buffer=self.min_buffer,
                gain_settings=self.gain_settings,
+               ext_frequency=self.ext_frequency,
                current_gains=self.readCurrentGains(),
                       sysclk=int(self.dev.SendCommand("get.site 1 sysclkhz")))
         except Exception as e:
@@ -281,9 +299,12 @@ class ReadoutObj(object):
         self.upload_class = None
         self.last_counter = 0
         self._exc = None
+        freq = self.ext_frequency
+        if freq == 0:
+            freq = int(self.dev.SendCommand("get.site 1 sysclkhz"))
+        freq /= (int(self.dev.SendCommand("get.site 1 clkdiv"))*float(self.clk_divider))
         if kw.get("should_upload", False):
             dt = str(datetime.datetime.utcnow())
-            freq = int(self.dev.SendCommand("get.site 1 sysclkhz"))/int(self.dev.SendCommand("get.site 1 clkdiv"))/float(self.clk_divider)
             header = { "channels" : self.total_ch,
                        "log" : kw.get("log", ""),
                        "byte_depth" : self.readout_size,
