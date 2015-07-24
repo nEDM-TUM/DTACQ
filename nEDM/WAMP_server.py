@@ -257,16 +257,20 @@ class ReadoutObj(object):
         else:
             return self.dev.SendCommand(cmd)
 
+    def _checkCounter(self, full_pts, total_counter):
+        self.last_counter += full_pts
+        while self.last_counter > 0xFFFFFFFF:
+            self.last_counter -= 0x100000000
+        if self.last_counter != (total_counter % 0xFFFFFFFF):
+            raise ReadoutException("ReadoutBuffer corrupted: expected({}) seen({})".format(self.last_counter, total_counter))
+
     def _validateData425(self, v):
         ch = self.total_ch
         full_pts = len(v)/ch
         last_set = v[(full_pts-1)*ch:]
         cw = self.check_word
         total_counter = numpy.fromstring(numpy.array(last_set[cw:cw+2]).tostring(), numpy.uint32)[0]
-        self.last_counter += full_pts
-        self.last_counter %= 0xFFFFFFFF
-        if self.last_counter != (total_counter % 0xFFFFFFFF):
-            raise ReadoutException("ReadoutBuffer corrupted: expected({}) seen({})".format(self.last_counter, total_counter))
+        self._checkCounter(full_pts, total_counter)
 
     def _validateData435(self, v):
         ch = self.total_ch
@@ -274,11 +278,7 @@ class ReadoutObj(object):
         last_set = v[(full_pts-1)*ch:]
         cw = self.check_word
         total_counter = last_set[cw]
-        self.last_counter += full_pts
-        self.last_counter %= 0xFFFFFFFF
-        if self.last_counter != (total_counter % 0xFFFFFFFF):
-            raise ReadoutException("ReadoutBuffer corrupted: expected({}) seen({})".format(self.last_counter, total_counter))
-
+        self._checkCounter(full_pts, total_counter)
 
     def startReadout(self, **kw):
         self._ensureNotRunning()
