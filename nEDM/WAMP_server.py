@@ -33,6 +33,45 @@ _db_name = "nedm%2Fmeasurements"
 _un = "digitizer_writer"
 _pw="""pw"""
 
+def upload_file_with_curl(file_name, post_to_path, cookies=None):
+    """
+    file_name : full path to file
+    post_to_path : of the form "server/{db}/{doc_id}/{attachment_name}
+    cookies : Any cookies (as string) to send along with the request
+    """
+    import pycurl
+    from StringIO import StringIO
+    from clint.textui.progress import Bar as ProgressBar
+    total_size = os.path.getsize(file_name)
+    bar = ProgressBar(expected_size=total_size, filled_char='=')
+
+    class FileReader:
+        def __init__(self, fp):
+            self.fp = fp
+            self.total_read = 0
+        def read_callback(self, size):
+            x = self.fp.read(size)
+            if x is not None:
+                self.total_read += len(x)
+                bar.show(self.total_read)
+            return x
+
+    c = pycurl.Curl()
+    storage = StringIO()
+    c.setopt(pycurl.URL, post_to_path)
+    c.setopt(pycurl.PUT, 1)
+    c.setopt(pycurl.READFUNCTION, FileReader(open(file_name, 'rb')).read_callback)
+    c.setopt(pycurl.INFILESIZE, total_size)
+    c.setopt(c.WRITEFUNCTION, storage.write)
+    if cookies is not None:
+        c.setopt(c.COOKIE, cookies)
+    c.perform()
+    c.close()
+    content = storage.getvalue()
+    try:
+        return json.loads(content)
+    except:
+        return { "error" : True, "content" : content }
 
 
 class UploadClass(object):
@@ -72,11 +111,12 @@ class UploadClass(object):
      doc = db[resp['id']]
      rev = doc.get().json()['_rev']
 
-     with open(fn, 'rb') as f:
-         resp = doc.attachment(fn + "?rev=" + rev).put(data=f,headers={'content-type' : 'application/octet-stream'}).json()
-
+     cookies = '; '.join(['='.join(x) for x in acct._session.cookies.items()])
+     print("Sending file: {}".format(fn))
+     resp = upload_file_with_curl(fn, '/'.join([acct.uri, '_attachments', _db_name, resp['id'], fn]), cookies)
+     print("response: {}".format(resp))
      if "ok" in resp:
-         resp["url"] = "/_couchdb/{}/{}/{}".format(_db_name,resp["id"],fn)
+         resp["url"] = "/_attachments/{db}/{id}/{fn}".format(db=_db_name,fn=fn,**resp)
          resp["file_name"] = fn
          resp["type"] = "FileUpload"
          os.remove(fn)
@@ -260,7 +300,7 @@ class ReadoutObj(object):
             for k, v in kw.get("logitems", {}).items():
                 header[k] = v
             if kw.get("should_save", False):
-                file_name = dt + ".dig"
+                file_name = dt.replace(':', '-') + ".dig"
                 if os.path.exists(file_name):
                     raise ReadoutException("'%s' exists, not overwriting" % file_name)
                 self.open_file = open(file_name, "wb")
