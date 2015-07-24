@@ -303,6 +303,8 @@ class ReadoutObj(object):
         if freq == 0:
             freq = int(self.dev.SendCommand("get.site 1 sysclkhz"))
         freq /= (int(self.dev.SendCommand("get.site 1 clkdiv"))*float(self.clk_divider))
+        if freq < self.min_frequency:
+            raise ReadoutException("Frequency ({}) below minimum ({})".format(freq, self.min_frequency))
         if kw.get("should_upload", False):
             dt = str(datetime.datetime.utcnow())
             header = { "channels" : self.total_ch,
