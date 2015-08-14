@@ -19,7 +19,7 @@ from twisted.internet import reactor, defer, threads
 import time
 import traceback
 from types import MethodType
-import pynedm
+from pynedm import ProcessObject
 from clint.textui.progress import Bar as ProgressBar
 #from card_communicate import execute_cmd
 
@@ -263,8 +263,9 @@ class ReadoutObj(object):
         self.check_word = self.actual_ch
 
         buffer_size = kw.get("buffer_size", 1*1024*1024)
-        bytes_per_frame = self.total_ch*2
-        buffer_size += (bytes_per_frame - (buffer_size % bytes_per_frame))
+        pts_per_frame = self.total_ch
+        buffer_size += (pts_per_frame - (buffer_size % pts_per_frame))
+        pts_per_buffer = buffer_size/pts_per_frame
         self.last_offset = 0
         self.upload_class = None
         self.last_counter = 0
@@ -275,13 +276,31 @@ class ReadoutObj(object):
         freq /= (int(self.dev.SendCommand("get.site 1 clkdiv"))*float(self.clk_divider))
         if freq < self.min_frequency:
             raise ReadoutException("Frequency ({}) below minimum ({})".format(freq, self.min_frequency))
+
         if kw.get("should_upload", False):
             dt = str(datetime.datetime.utcnow())
+            downsample = kw.get("downsample", 1)
+            if downsample < 1:
+                raise ReadoutException("downsample must be >= 1")
+            buffer_size -= (pts_per_buffer % downsample)*pts_per_frame
+
+            bit_shift = self.bit_right_shift
+            byte_depth = self.readout_size
+            is_float = False
+            if downsample != 1:
+                bit_shift = 0
+                byte_depth = 8
+                is_float = True
+            self.ds = downsample
+
+
             header = { "channels" : self.total_ch,
                        "log" : kw.get("log", ""),
-                       "byte_depth" : self.readout_size,
-                       "bit_shift" : self.bit_right_shift,
+                       "byte_depth" : byte_depth,
+                       "bit_shift" : bit_shift,
+                       "is_float" : is_float,
                        "ip" : self.ip_addr,
+                       "downsample" : downsample,
                        "date" : dt,
                        "freq_hz" : freq,
                        "measurement_name" : kw.get("measurement_name", "Digitizer " + self.ip_addr),
@@ -353,10 +372,17 @@ class ReadoutObj(object):
             if at_end != 0:
                 # truncating end
                 v = v[:-at_end]
-            t = numpy.array([v[c::ch] for c in ch_list])
+            t = None
+            if self.ds == 1:
+                t = numpy.array([v[c::ch] for c in ch_list])
+            else:
+                ds_end = len(v) % (self.ds*ch)
+                if ds_end != 0:
+                    v = v[:-ds_end]
+                t = numpy.array([v[c::ch].reshape(-1, self.ds).mean(axis=1) for c in ch_list])
             t.T.tofile(afile)
-        except Exception as e:
-            print e, len(t), t.T, afile, ch, len(v), v, ch_list
+        except:
+            traceback.print_exc()
             raise
 
     def __call__(self, x):
