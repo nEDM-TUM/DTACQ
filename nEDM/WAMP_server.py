@@ -176,6 +176,27 @@ class ReadoutObj(object):
             ])
         return self.ext_frequency
 
+    def resetReadout(self):
+		"""
+        Sometimes the card buffer becomes inconsistent and the run needs to
+		be restarted.  We have found that, e.g., the following commands work to
+        restart everything:
+
+        run0 1
+        run0 1,2
+        run0 1
+
+        so we run these here to try to "jump start" the card.
+		"""
+
+        for i in range(2):
+            cmd = "run0 "
+            for x in self.available_modules:
+                cmd += str(x)
+                self.performCmd(cmd)
+                time.sleep(0.3)
+                cmd += ","
+
     def rebootCard(self):
         execute_cmd(self.ip_addr, "reboot")
         raise ReleaseDigitizerNow()
