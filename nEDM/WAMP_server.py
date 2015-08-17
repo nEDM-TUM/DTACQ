@@ -21,7 +21,8 @@ import traceback
 from types import MethodType
 from pynedm import ProcessObject
 from clint.textui.progress import Bar as ProgressBar
-#from card_communicate import execute_cmd
+from paramiko.client import SSHClient
+
 
 _db_url = os.environ["DB_URL"]
 _db_name = os.environ["DB_NAME"]
@@ -36,6 +37,15 @@ class ReadoutException(Exception):
 
 class ReleaseDigitizerNow(Exception):
     pass
+
+def execute_cmd(ip_addr, cmd):
+    client = SSHClient()
+    client.load_system_host_keys()
+    client.connect('digitizer.1.nedm1',
+      username=_dtacq_un,
+      password=_dtacq_pw)
+    _, aout, aerr = client.exec_command(cmd)
+    return aout.read(), aerr.read()
 
 class UploadClass(object):
    def __init__(self, doc_to_save):
