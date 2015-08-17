@@ -23,18 +23,16 @@ from pynedm import ProcessObject
 from clint.textui.progress import Bar as ProgressBar
 #from card_communicate import execute_cmd
 
+_db_url = os.environ["DB_URL"]
+_db_name = os.environ["DB_NAME"]
+_un = os.environ["DB_USER_NAME"]
+_pw= os.environ["DB_PASSWORD"]
 
 class ReadoutException(Exception):
     pass
 
-_db_url = "http://localhost:5984"
 class ReleaseDigitizerNow(Exception):
     pass
-
-_db_name = "nedm%2Fmeasurements"
-_un = "digitizer_writer"
-_pw="""pw"""
-
 
 class UploadClass(object):
    def __init__(self, doc_to_save):

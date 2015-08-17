@@ -8,6 +8,14 @@
     <dict>
            <key>PYTHONPATH</key>
            <string>/Users/nedmdaq/software/DTACQ/lib</string>
+           <key>DB_USER_NAME</key>
+           <string>digitizer_writer</string>
+           <key>DB_PASSWORD</key>
+           <string>****</string>
+           <key>DB_NAME</key>
+           <string>nedm%2Fmeasurements</string>
+           <key>DB_URL</key>
+           <string>http://raid.nedm1</string>
     </dict>
     <key>ProgramArguments</key>
     <array>
