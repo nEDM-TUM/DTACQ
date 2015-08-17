@@ -21,7 +21,7 @@ import traceback
 from types import MethodType
 from pynedm import ProcessObject
 from clint.textui.progress import Bar as ProgressBar
-from paramiko.client import SSHClient
+from paramiko.client import SSHClient, AutoAddPolicy
 
 
 _db_url = os.environ["DB_URL"]
@@ -41,7 +41,8 @@ class ReleaseDigitizerNow(Exception):
 def execute_cmd(ip_addr, cmd):
     client = SSHClient()
     client.load_system_host_keys()
-    client.connect('digitizer.1.nedm1',
+    client.set_missing_host_key_policy(AutoAddPolicy())
+    client.connect(ip_addr,
       username=_dtacq_un,
       password=_dtacq_pw)
     _, aout, aerr = client.exec_command(cmd)
