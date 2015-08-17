@@ -28,6 +28,9 @@ _db_name = os.environ["DB_NAME"]
 _un = os.environ["DB_USER_NAME"]
 _pw= os.environ["DB_PASSWORD"]
 
+_dtacq_un = os.environ["DTACQ_USER_NAME"]
+_dtacq_pw = os.environ["DTACQ_PASSWORD"]
+
 class ReadoutException(Exception):
     pass
 

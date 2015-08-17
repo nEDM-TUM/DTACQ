@@ -16,6 +16,10 @@
            <string>nedm%2Fmeasurements</string>
            <key>DB_URL</key>
            <string>http://raid.nedm1</string>
+           <key>DTACQ_USER_NAME</key>
+           <string>root</string>
+           <key>DTACQ_PASSWORD</key>
+           <string>****</string>
     </dict>
     <key>ProgramArguments</key>
     <array>
