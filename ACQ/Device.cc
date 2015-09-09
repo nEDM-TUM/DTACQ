@@ -43,8 +43,8 @@ void Device::ResetIPAddress(const std::string& ipAddr)
 
   // Open up the command service
   tcp::resolver res(m_IOService);
-  tcp::resolver::iterator endpts = res.resolve(tcp::resolver::query(ipAddr, "4220"));
   try {
+    tcp::resolver::iterator endpts = res.resolve(tcp::resolver::query(ipAddr, "4220"));
     boost::asio::connect(*m_ServiceSocket, endpts);
   } catch (...) {
     Cleanup();
