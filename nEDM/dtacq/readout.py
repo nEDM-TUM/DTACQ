@@ -7,6 +7,8 @@ import traceback
 from twisted.internet import defer, reactor
 from .digitizer_utils import execute_cmd, ReadoutException, ReleaseDigitizerNow
 from .database import UploadClass
+from .decorators import (notRunning, isRunning)
+
 
 class ACQCard(object):
     min_frequency = 5000
@@ -17,6 +19,7 @@ class ACQCard(object):
         self.min_buffer = 1*1024*1024/self.readout_size
         self.available_modules = dict([(i+1, dev.NumChannels(i)) for i in range(dev.NumSites())])
         self.dev = dev
+        self.isRunning = False
 
     def _checkCounter(self, full_pts, total_counter):
         self.last_counter += full_pts
@@ -25,6 +28,7 @@ class ACQCard(object):
         if self.last_counter != (total_counter % 0xFFFFFFFF):
             raise ReadoutException("ReadoutBuffer corrupted: expected({}) seen({})".format(self.last_counter, total_counter))
 
+    @notRunning
     def reset(self, check_word=0, total_channels=0):
         self.last_counter = 0
         self.total_ch = total_channels
@@ -37,6 +41,7 @@ class ACQCard(object):
         else:
             return self.dev.SendCommand(cmd)
 
+    @notRunning
     def useExternalClock(self, freq_in_hz=None):
         if freq_in_hz is None:
             self.ext_frequency = 0
@@ -51,6 +56,20 @@ class ACQCard(object):
                 "set.site 1 clk=1,0,1",
             ])
         return self.ext_frequency
+
+    @notRunning
+    def readCurrentGains(self):
+        g = lambda x: dict([(i, int(x[i])) for i in range(len(x))])
+        return dict([(m,g(self.dev.SendCommand("get.site {} gains".format(m))))
+                       for m in self.available_modules])
+
+    @notRunning
+    def setClkDiv(self, **kw):
+        clkdiv = int(kw.get("clkdiv", 1000))
+        if clkdiv < self.minClkDiv:
+            raise ReadoutException("Clkdiv must not be below the min ({})".format(self.minClkDiv))
+        self.dev.SendCommand("set.site 1 clkdiv " + str(clkdiv))
+        return self.dev.SendCommand("get.site 1 clkdiv")
 
 
 class ACQ425ELF(ACQCard):
@@ -100,7 +119,7 @@ class ReadoutObj(object):
         model = dev.SendCommand("get.site 1 MODEL").split(" ")[0]
         # Tell device to transmit verification data in the stream
         dev.SendCommand("set.site 0 spad 1,2,0")
-       
+
         if model == "ACQ425ELF":
             self.card = ACQ425ELF(dev)
         elif model == "ACQ437ELF":
@@ -114,7 +133,6 @@ class ReadoutObj(object):
         self.cond = threading.Condition(self.alock)
         self.obj_buffer = None
         self.open_file = None
-        self.isRunning = False
         self.upload_class = None
 
     def __getattr__(self, name):
@@ -142,10 +160,6 @@ class ReadoutObj(object):
             anobj = numpy.right_shift(anobj, self.bit_right_shift)
         return anobj
 
-    def _ensureNotRunning(self):
-        if self.isRunning:
-            raise ReadoutException("Cannot call function while readout running")
-
     def resetReadout(self):
         """
         Sometimes the card buffer becomes inconsistent and the run needs to
@@ -170,15 +184,6 @@ class ReadoutObj(object):
         execute_cmd(self.ip_addr, "reboot")
         raise ReleaseDigitizerNow()
 
-    def readCurrentGains(self):
-        g = lambda x: dict([(i, int(x[i])) for i in range(len(x))])
-        return dict([(m,g(self.dev.SendCommand("get.site {} gains".format(m))))
-                       for m in self.available_modules])
-
-    def _ensureRunning(self):
-        if not self.isRunning:
-            raise ReadoutException("Cannot call function while readout is idle")
-
     def getChannels(self, **kw):
         try:
             return dict(mods=self.available_modules,
@@ -199,16 +204,8 @@ class ReadoutObj(object):
         if self.open_file is not None: self.open_file.close()
         self.open_file = None
 
-    def setClkDiv(self, **kw):
-        self._ensureNotRunning()
-        clkdiv = int(kw.get("clkdiv", 1000))
-        if clkdiv < self.minClkDiv:
-            raise ReadoutException("Clkdiv must not be below the min ({})".format(self.minClkDiv))
-        self.dev.SendCommand("set.site 1 clkdiv " + str(clkdiv))
-        return self.dev.SendCommand("get.site 1 clkdiv")
-
+    @notRunning
     def startReadout(self, **kw):
-        self._ensureNotRunning()
 
         ml = kw.get("mod_list", [])
         mods = ','.join(map(str,ml))
@@ -296,15 +293,15 @@ class ReadoutObj(object):
             return d
         return waitToFinish(self)
 
+    @isRunning
     def stopReadout(self, **kw):
-        self._ensureRunning()
         self.dev.StopReadout()
         self.closeFile()
         if self.upload_class and self.upload_class.shouldUploadFile():
             return self.upload_class.uploadFile()
 
+    @isRunning
     def readBuffer(self, **kw):
-        self._ensureRunning()
         chans = kw.get("channels", [])
         # build load into a stream
         header = [len(chans)]
