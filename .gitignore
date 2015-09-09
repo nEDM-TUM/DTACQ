@@ -4,3 +4,4 @@ lib*
 buildTools/config.mk
 config.log
 config.status
+*.pyc
