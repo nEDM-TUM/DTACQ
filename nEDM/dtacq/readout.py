@@ -115,9 +115,7 @@ class ReadoutObj(object):
         self.obj_buffer = None
         self.open_file = None
         self.isRunning = False
-        self.should_save = False
         self.upload_class = None
-        self._cl = []
 
     def __getattr__(self, name):
         """
@@ -209,7 +207,6 @@ class ReadoutObj(object):
         self.dev.SendCommand("set.site 1 clkdiv " + str(clkdiv))
         return self.dev.SendCommand("get.site 1 clkdiv")
 
-
     def startReadout(self, **kw):
         self._ensureNotRunning()
 
@@ -268,7 +265,6 @@ class ReadoutObj(object):
                        "current_gains" : self.readCurrentGains(),
                        "gain_conversion" : self.gain_settings
                      }
-            self._cl = header["channel_list"]
             for k, v in kw.get("logitems", {}).items():
                 header[k] = v
             if kw.get("should_save", False):
