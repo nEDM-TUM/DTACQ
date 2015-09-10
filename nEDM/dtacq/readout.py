@@ -9,6 +9,7 @@ from .digitizer_utils import execute_cmd, ReadoutException, ReleaseDigitizerNow
 import logging
 from .database import UploadClass
 from .decorators import (notRunning, isRunning)
+from .trigger import get_trigger
 from . import cards
 import os
 import json
@@ -121,6 +122,8 @@ class ReadoutObj(object):
         pts_per_frame = self.total_ch
         buffer_size += (pts_per_frame - (buffer_size % pts_per_frame))
         pts_per_buffer = buffer_size/pts_per_frame
+
+        self.trigger = get_trigger(kw.get("trigger", ""))
 
         self.last_offset = 0
         self.upload_class = None
@@ -250,7 +253,8 @@ class ReadoutObj(object):
            # This should generally be 0, though it's possible that the *last*
            # buffer is not aligned.
            self.last_offset += len(v) % self.total_ch
-           if self.open_file:
+
+           if self.open_file and self.trigger.call_trigger(v, range(self.total_ch), self.total_ch):
                self._writeToFile(v, self.open_file, self.doc_to_save["channel_list"])
            self._add_to_list(v)
         except:
