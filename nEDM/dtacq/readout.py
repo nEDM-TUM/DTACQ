@@ -6,6 +6,7 @@ import ctypes
 import traceback
 from twisted.internet import defer, reactor
 from .digitizer_utils import execute_cmd, ReadoutException, ReleaseDigitizerNow
+import logging
 from .database import UploadClass
 from .decorators import (notRunning, isRunning)
 from . import cards
@@ -243,19 +244,18 @@ class ReadoutObj(object):
            if len(x) == 0: return
            v = x.vec()
            if self.last_offset != 0:
+               # This should generally not happen, but we check anyways
                raise ReadoutException("Buffer not aligned")
            self.validateData(v)
+           # This should generally be 0, though it's possible that the *last*
+           # buffer is not aligned.
+           self.last_offset += len(v) % self.total_ch
            if self.open_file:
                self._writeToFile(v, self.open_file, self.doc_to_save["channel_list"])
-           ch = self.total_ch
-           start_pt = (ch - self.last_offset) % ch
-           end_pt = (len(v)-start_pt) % ch
-           t = v[start_pt:]
-           self.last_offset += end_pt
-           self._add_to_list(t)
+           self._add_to_list(v)
         except:
            self._exc = traceback.format_exc()
-           logging.exception("Exception during readout") 
+           logging.exception("Exception during readout")
            raise
 
     def safeShutdown(self):
