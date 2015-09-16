@@ -6,6 +6,8 @@ class ACQCard(object):
     min_frequency = 5000
 
     def __init__(self, dev):
+        # Set up the counter for all cards
+        dev.SendCommand("set.site 0 spad 1,2,0")
         self.isRunning = False
         self.readout_size = dev.ReadoutSize()
         self.min_buffer = 1*1024*1024/self.readout_size

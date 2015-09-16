@@ -22,7 +22,6 @@ class ReadoutObj(object):
         # Available sites in the device
         model = dev.SendCommand("get.site 1 MODEL").split(" ")[0]
         # Tell device to transmit verification data in the stream
-        dev.SendCommand("set.site 0 spad 1,2,0")
 
         if hasattr(cards, model):
             self.card = getattr(cards, model)(dev)
