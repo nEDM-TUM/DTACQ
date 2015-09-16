@@ -82,6 +82,29 @@ class ACQ425ELF(ACQCard):
         total_counter = numpy.fromstring(numpy.array(last_set[cw:cw+2]).tostring(), numpy.uint32)[0]
         self._checkCounter(full_pts, total_counter)
 
+class ACQ425ELFLIA(ACQ425ELF):
+    gain_settings = { 0 : "x1" }
+    def __init__(self, dev):
+        super(ACQ425ELFLIA, self).__init__(dev)
+        # Reset the counter, doesn't work for this card ! (yet)
+        dev.SendCommand("set.site 0 spad 0,0,0")
+        self.available_modules = dict([(i+1, dev.NumChannels(i)) for i in range(dev.NumSites())])
+        self.setClkDiv()
+
+    @notRunning
+    def setClkDiv(self, **kw):
+        return super(ACQ425ELFLIA, self).setClkDiv(clkdiv=100)
+
+    @notRunning
+    def reset(self, check_word=0, total_channels=0):
+        self.last_counter = 0
+        self.total_ch = 80
+        self.check_word = check_word
+
+    def validateData(self, v):
+        pass
+
+
 
 class ACQ437ELF(ACQCard):
     minClkDiv = 4
