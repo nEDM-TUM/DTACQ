@@ -210,7 +210,6 @@ class ReadoutObj(object):
         if self.upload_class and self.upload_class.shouldUploadFile():
             return self.upload_class.uploadFile()
 
-    @isRunning
     def readBuffer(self, **kw):
         chans = kw.get("channels", [])
         # build load into a stream
@@ -219,8 +218,11 @@ class ReadoutObj(object):
         header = numpy.array(header, dtype=numpy.int32)
         header = header.tostring()
         al = self._pop_from_list()
-        if al is None and self._exc is not None:
-            raise ReadoutException("Readout unexpectedly ended!")
+        if al is None:
+            if self._exc is not None:
+                raise ReadoutException("Readout unexpectedly ended!")
+            if not self.isRunning:
+                return numpy.array([0xdeadbeef], dtype=numpy.int32).tostring()
         if al is not None:
             return header + numpy.array([al[ch::self.total_ch] for ch in chans]).tostring()
         return header
