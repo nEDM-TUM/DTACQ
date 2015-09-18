@@ -84,6 +84,10 @@ class ReadoutObj(object):
                 time.sleep(0.3)
                 cmd += ","
 
+    def checkTrigger(self, **kw):
+        get_trigger(kw.get("trigger", ""))
+        return True
+
     def rebootCard(self):
         execute_cmd(self.ip_addr, "reboot")
         raise ReleaseDigitizerNow()
