@@ -1,5 +1,5 @@
 import logging
-from .digitizer_utils import ReadoutException
+from .digitizer_utils import ReadoutException, EndReadoutNow
 
 class Trigger(object):
     """
@@ -17,6 +17,7 @@ def get_trigger(exec_str=None):
    import imp, uuid
    mod = imp.new_module(str(uuid.uuid4()))
    mod.__dict__["Trigger"] = Trigger
+   mod.__dict__["EndReadoutNow"] = EndReadoutNow
    exec exec_str in mod.__dict__
    for name, c in mod.__dict__.items():
        try:

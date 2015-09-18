@@ -7,6 +7,9 @@ class ReadoutException(Exception):
 class ReleaseDigitizerNow(Exception):
     pass
 
+class EndReadoutNow(Exception):
+    pass
+
 def execute_cmd(ip_addr, cmd):
     client = SSHClient()
     client.load_system_host_keys()

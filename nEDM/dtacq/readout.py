@@ -5,7 +5,10 @@ import datetime
 import ctypes
 import traceback
 from twisted.internet import defer, reactor
-from .digitizer_utils import execute_cmd, ReadoutException, ReleaseDigitizerNow
+from .digitizer_utils import (execute_cmd,
+                              ReadoutException,
+                              ReleaseDigitizerNow,
+                              EndReadoutNow)
 import logging
 from .database import UploadClass
 from .decorators import (notRunning, isRunning)
@@ -256,6 +259,9 @@ class ReadoutObj(object):
            if self.open_file and self.trigger.call_trigger(v, range(self.total_ch), self.total_ch):
                self._writeToFile(v, self.open_file, self.doc_to_save["channel_list"])
            self._add_to_list(v)
+        except EndReadoutNow:
+           logging.info("Readout end requested")
+           raise
         except:
            self._exc = traceback.format_exc()
            logging.exception("Exception during readout")
