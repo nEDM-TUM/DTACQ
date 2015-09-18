@@ -26,6 +26,12 @@ class ReadoutObj(object):
         model = dev.SendCommand("get.site 1 MODEL").split(" ")[0]
         # Tell device to transmit verification data in the stream
 
+        try:
+          # Check for LIA version of firmware
+          if dev.SendCommand("fpga_version").split(" ")[0].split("_")[-1] == "LIA":
+              model += "LIA"
+        except: pass
+
         if hasattr(cards, model):
             self.card = getattr(cards, model)(dev)
         else:
