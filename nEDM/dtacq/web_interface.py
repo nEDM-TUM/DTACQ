@@ -78,7 +78,11 @@ class ShipData(WebSocketServerProtocol):
                s.announce("'{}' digitizer released by '{}'".format(ip,self.req.peer))
 
    def announce(self, msg):
-       self.sendMessage(self._buildHeader(dict(cmd="announce",msg=msg,ok=True)), isBinary = True)
+       if type(msg) == type([]):
+           for x in msg:
+               self.announce(x)
+       else:
+           self.sendMessage(self._buildHeader(dict(cmd="announce",msg=msg,ok=True)), isBinary = True)
 
    def _buildHeader(self, hdr):
        hdr = json.dumps(hdr)

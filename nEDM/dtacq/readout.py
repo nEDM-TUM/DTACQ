@@ -202,19 +202,25 @@ class ReadoutObj(object):
                 reactor.callLater(1, waitToFinish, s, d)
             else:
                 self.isRunning = False
-                if not s._exc:
-                    d.callback(dict(type="JobFinished", msg="Readout job completed"))
-                else:
-                    d.callback(dict(type="JobFinished", error=self._exc))
+                def send_result(res):
+                    res = [ res ]
+                    if not s._exc:
+                        res.append(dict(type="JobFinished", msg="Readout job completed"))
+                    else:
+                        res.append(dict(type="JobFinished", error=self._exc))
+                    d.callback(res)
+                self.__uploadFile().addCallback( send_result )
             return d
         return waitToFinish(self)
+
+    def __uploadFile(self):
+        self.closeFile()
+        if self.upload_class and self.upload_class.shouldUploadFile():
+            return self.upload_class.uploadFile()
 
     @isRunning
     def stopReadout(self, **kw):
         self.dev.StopReadout()
-        self.closeFile()
-        if self.upload_class and self.upload_class.shouldUploadFile():
-            return self.upload_class.uploadFile()
 
     def readBuffer(self, **kw):
         chans = kw.get("channels", [])
@@ -225,9 +231,9 @@ class ReadoutObj(object):
         header = header.tostring()
         al = self._pop_from_list()
         if al is None:
-            if self._exc is not None:
-                raise ReadoutException("Readout unexpectedly ended!")
             if not self.isRunning:
+                if self._exc is not None:
+                    raise ReadoutException("Readout unexpectedly ended!")
                 return numpy.array([0xdeadbeef], dtype=numpy.int32).tostring()
         if al is not None:
             return header + numpy.array([al[ch::self.total_ch] for ch in chans]).tostring()

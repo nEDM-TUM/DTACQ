@@ -4,6 +4,7 @@ from twisted.internet import threads
 from clint.textui.progress import Bar as ProgressBar
 import logging
 from .settings import db_url, db_name, db_un, db_pw 
+import os
 
 class UploadClass(object):
    def __init__(self, doc_to_save):
