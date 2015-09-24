@@ -84,6 +84,7 @@ class ACQ425ELF(ACQCard):
 
 class ACQ425ELFLIA(ACQ425ELF):
     gain_settings = { 0 : "x1" }
+    clk_divider = 128
     def __init__(self, dev):
         super(ACQ425ELFLIA, self).__init__(dev)
         # Reset the counter, doesn't work for this card ! (yet)
