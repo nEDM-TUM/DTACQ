@@ -2,12 +2,12 @@ import pyacq
 import numpy
 import threading
 import datetime
-import ctypes
 import traceback
 from twisted.internet import defer, reactor
 from .digitizer_utils import (execute_cmd,
                               ReadoutException,
                               ReleaseDigitizerNow,
+                              OpenNewReadoutFile,
                               EndReadoutNow)
 import logging
 from .database import UploadClass
@@ -15,7 +15,6 @@ from .decorators import (notRunning, isRunning)
 from .trigger import get_trigger
 from . import cards
 import os
-import json
 
 
 class ReadoutObj(object):
@@ -42,7 +41,6 @@ class ReadoutObj(object):
         self.alock = threading.Lock()
         self.cond = threading.Condition(self.alock)
         self.obj_buffer = None
-        self.open_file = None
         self.upload_class = None
 
     def __getattr__(self, name):
@@ -114,10 +112,6 @@ class ReadoutObj(object):
             # Getting here means we can't continue, reboot
             self.rebootCard()
 
-    def closeFile(self, **kw):
-        if self.open_file is not None: self.open_file.close()
-        self.open_file = None
-
     @notRunning
     def startReadout(self, **kw):
 
@@ -184,39 +178,35 @@ class ReadoutObj(object):
                 file_name = dt.replace(':', '-') + ".dig"
                 if os.path.exists(file_name):
                     raise ReadoutException("'%s' exists, not overwriting" % file_name)
-                self.open_file = open(file_name, "wb")
                 header["filename"] = file_name
-                header_b = bytearray(json.dumps(header))
-                self.open_file.write(bytearray(ctypes.c_uint32(len(header_b))) + header_b)
             self.doc_to_save = header
             self.upload_class = UploadClass(self.doc_to_save)
-            self.upload_class.performUpload()
 
         self.dev.BeginReadout(function=self, buffer_size=buffer_size)
         self.isRunning = True
 
-        def waitToFinish(s, d=None):
+        def waitToFinish(s, d=None, uc=None):
             if not d:
                 d = defer.Deferred()
+            if not uc:
+                uc = s.upload_class
             if hasattr(s, "dev") and s.dev.IsRunning():
-                reactor.callLater(1, waitToFinish, s, d)
+                reactor.callLater(1, waitToFinish, s, d, uc)
             else:
-                self.isRunning = False
+                s.isRunning = False
                 def send_result(res):
                     res = [ res ]
                     if not s._exc:
                         res.append(dict(type="JobFinished", msg="Readout job completed"))
                     else:
-                        res.append(dict(type="JobFinished", error=self._exc))
+                        res.append(dict(type="JobFinished", error=s._exc))
                     d.callback(res)
-                self.__uploadFile().addCallback( send_result )
+                if uc:
+                    uc.closeAndUploadFile().addCallback( send_result )
+                else:
+                    send_result("")
             return d
         return waitToFinish(self)
-
-    def __uploadFile(self):
-        self.closeFile()
-        if self.upload_class and self.upload_class.shouldUploadFile():
-            return self.upload_class.uploadFile()
 
     @isRunning
     def stopReadout(self, **kw):
@@ -274,8 +264,12 @@ class ReadoutObj(object):
            # buffer is not aligned.
            self.last_offset += len(v) % self.total_ch
 
-           if self.open_file and self.trigger.call_trigger(v, range(self.total_ch), self.total_ch):
-               self._writeToFile(v, self.open_file, self.doc_to_save["channel_list"])
+           if self.upload_class:
+               try:
+                   if self.upload_class.isWriting() and self.trigger.call_trigger(v, range(self.total_ch), self.total_ch):
+                       self.upload_class.writeToFile(lambda x: self._writeToFile(v, x, self.doc_to_save["channel_list"]))
+               except OpenNewReadoutFile:
+                   self.upload_class.writeNewFile()
            self._add_to_list(v)
         except EndReadoutNow:
            logging.info("Readout end requested")

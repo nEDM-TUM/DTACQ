@@ -1,22 +1,74 @@
 import cloudant
 from pynedm import ProcessObject
-from twisted.internet import threads
+from twisted.internet import threads, defer
 from clint.textui.progress import Bar as ProgressBar
 import logging
-from .settings import db_url, db_name, db_un, db_pw 
+from .settings import db_url, db_name, db_un, db_pw
 import os
+import json
+import ctypes
 
 class UploadClass(object):
    def __init__(self, doc_to_save):
      self.doc_to_post = doc_to_save
      self.doc_to_post["type"] = "measurement"
+     self._fn = self.doc_to_post.get("filename", None)
+     self._openfile = None
+     self._filenumber = 0
      self.deferred = None
+
+     self.__performUpload()
+     self.writeNewFile()
 
    def __acct(self):
      acct = cloudant.Account(uri=db_url)
      acct.login(db_un, db_pw)
      db = acct[db_name]
      return acct, db
+
+   def isWriting(self):
+     return self._openfile is not None
+
+   def closeAndUploadFile(self):
+     if not self.shouldUploadFile():
+       d = defer.Deferred()
+       d.callback("Not uploading file")
+       return d
+
+     if self._openfile:
+         self._openfile["file"].close()
+     self.deferred.addCallback(lambda x:
+       threads.deferToThread(self.__performUploadFileInThread, x, self._openfile["name"]))
+     self._openfile = None
+     return self.deferred
+
+   def writeNewFile(self):
+     if not self._fn:
+         return
+
+     self.closeAndUploadFile()
+
+     new_file_name = "{0}-{fn}{1}".format(*os.path.splitext(self._fn), fn=self._filenumber)
+     self._filenumber += 1
+
+     self._openfile = {
+       "name" : new_file_name,
+       "file" : open(new_file_name, "wb")
+     }
+     header = self.doc_to_post
+     header["filename"] = new_file_name
+
+     header_b = bytearray(json.dumps(header))
+     while len(header_b) % 4 != 0:
+         header_b += " "
+     self._openfile["file"].write(bytearray(ctypes.c_uint32(len(header_b))) + header_b)
+
+   def writeToFile(self, dat):
+     """
+     dat should be a function type taking a file object as argument
+     """
+     if not self._openfile: return
+     dat(self._openfile["file"])
 
    def __performUploadInThread(self):
      acct, db = self.__acct()
@@ -27,20 +79,19 @@ class UploadClass(object):
      resp["type"] = "DocUpload"
      return resp
 
-   def performUpload(self):
+   def __performUpload(self):
      self.deferred = threads.deferToThread(self.__performUploadInThread)
      return self.deferred
 
    def shouldUploadFile(self):
-     return "filename" in self.doc_to_post and self.deferred is not None
+     return "filename" in self.doc_to_post and\
+            self.deferred is not None and\
+            self._openfile is not None
 
-
-   def __performUploadFileInThread(self, resp):
+   def __performUploadFileInThread(self, resp, fn):
      if "ok" not in resp:
          return "Document not saved!"
      acct, db = self.__acct()
-     fn = self.doc_to_post["filename"]
-
      po = ProcessObject(acct=acct)
 
      class CallBack:
@@ -62,9 +113,4 @@ class UploadClass(object):
          os.remove(fn)
      return resp
 
-   def uploadFile(self):
-     if not self.shouldUploadFile():
-       return "File will not be saved"
-     self.deferred.addCallback(lambda x: threads.deferToThread(self.__performUploadFileInThread, x))
-     return self.deferred
 
