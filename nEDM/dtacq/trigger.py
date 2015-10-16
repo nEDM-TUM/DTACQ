@@ -10,6 +10,23 @@ class Trigger(object):
             return True
         return self.trigger(dict([(c,v[c::total_ch]) for c in channel_list]))
 
+    """
+    def trigger(self, x):
+		This is the function that should be overloaded by the derived class.
+        The possible return values are:
+
+          False - write no data
+          True  - write all data
+		  [None, OpenNewReadoutFile, (1, 8), ...] - a list of commands with the
+             following meanings:
+             None - write all data
+			 OpenNewReadoutFile - a class, will open a new readout file,
+               closing the current file
+			 (x,y) - tuple, will write the current data (all selected channels)
+             from index x to y
+        return True
+    """
+
 def get_trigger(exec_str=None):
    if not exec_str or exec_str=="":
        return Trigger()

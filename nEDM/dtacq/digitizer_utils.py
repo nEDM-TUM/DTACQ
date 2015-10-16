@@ -1,6 +1,9 @@
 from paramiko.client import SSHClient, AutoAddPolicy
 from .settings import dtacq_un, dtacq_pw
 
+class OpenNewReadoutFile(object):
+    pass
+
 class ReadoutException(Exception):
     pass
 
@@ -10,8 +13,6 @@ class ReleaseDigitizerNow(Exception):
 class EndReadoutNow(Exception):
     pass
 
-class OpenNewReadoutFile(Exception):
-    pass
 
 def execute_cmd(ip_addr, cmd):
     client = SSHClient()

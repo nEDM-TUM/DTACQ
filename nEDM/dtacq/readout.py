@@ -230,7 +230,7 @@ class ReadoutObj(object):
         return header
 
 
-    def _writeToFile(self, v, afile, ch_list):
+    def _writeToFile(self, v, afile, ch_list, data_range=None):
         try:
             ch = self.total_ch
             # if we get stopped, it's possible we don't have all the data
@@ -247,7 +247,10 @@ class ReadoutObj(object):
                 if ds_end != 0:
                     v = v[:-ds_end]
                 t = numpy.array([v[c::ch].reshape(-1, self.ds).mean(axis=1) for c in ch_list])
-            t.T.tofile(afile)
+            towrite = t.T
+            if data_range is not None:
+                towrite = towrite[data_range[0]:data_range[1]]
+            towrite.tofile(afile)
         except:
             traceback.print_exc()
             raise
@@ -265,11 +268,18 @@ class ReadoutObj(object):
            self.last_offset += len(v) % self.total_ch
 
            if self.upload_class:
-               try:
-                   if self.upload_class.isWriting() and self.trigger.call_trigger(v, range(self.total_ch), self.total_ch):
-                       self.upload_class.writeToFile(lambda x: self._writeToFile(v, x, self.doc_to_save["channel_list"]))
-               except OpenNewReadoutFile:
-                   self.upload_class.writeNewFile()
+               if self.upload_class.isWriting():
+                   retVal = self.trigger.call_trigger(v, range(self.total_ch), self.total_ch)
+                   if retVal == False:
+                       return
+                   if retVal == True:
+                       retVal = [None]
+                   # We were given a set of commands to write the file, loop through them
+                   for x in retVal:
+                       if x == OpenNewReadoutFile:
+                           self.upload_class.writeNewFile()
+                       else:
+                           self.upload_class.writeToFile(lambda x: self._writeToFile(v, x, self.doc_to_save["channel_list"], data_range=x))
            self._add_to_list(v)
         except EndReadoutNow:
            logging.info("Readout end requested")
