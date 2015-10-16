@@ -35,10 +35,13 @@ class UploadClass(object):
        d.callback("Not uploading file")
        return d
 
-     if self._openfile:
-         self._openfile["file"].close()
-     self.deferred.addCallback(lambda x:
-       threads.deferToThread(self.__performUploadFileInThread, x, self._openfile["name"]))
+     self._openfile["file"].close()
+     if "written" in self._openfile:
+         self.deferred.addCallback(lambda x:
+           threads.deferToThread(self.__performUploadFileInThread, x, self._openfile["name"]))
+     else:
+         # Means we never wrote, just delete
+         os.remove(self._openfile["name"])
      self._openfile = None
      return self.deferred
 
@@ -68,6 +71,7 @@ class UploadClass(object):
      dat should be a function type taking a file object as argument
      """
      if not self._openfile: return
+     self._openfile["written"] = True
      dat(self._openfile["file"])
 
    def __performUploadInThread(self):
