@@ -275,11 +275,11 @@ class ReadoutObj(object):
                    if retVal == True:
                        retVal = [None]
                    # We were given a set of commands to write the file, loop through them
-                   for x in retVal:
-                       if x == OpenNewReadoutFile:
+                   for y in retVal:
+                       if y == OpenNewReadoutFile:
                            self.upload_class.writeNewFile()
                        else:
-                           self.upload_class.writeToFile(lambda x: self._writeToFile(v, x, self.doc_to_save["channel_list"], data_range=x))
+                           self.upload_class.writeToFile(lambda x: self._writeToFile(v, x, self.doc_to_save["channel_list"], data_range=y))
            self._add_to_list(v)
         except EndReadoutNow:
            logging.info("Readout end requested")
