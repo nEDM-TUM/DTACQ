@@ -7,6 +7,7 @@ from .settings import db_url, db_name, db_un, db_pw
 import os
 import json
 import ctypes
+import traceback
 
 class UploadClass(object):
    def __init__(self, doc_to_save):
@@ -109,7 +110,12 @@ class UploadClass(object):
              self.bar.show(size_rd)
 
      logging.info("Sending file: {}".format(fn))
-     resp = po.upload_file(fn, resp['id'], db=db_name, callback=CallBack())
+     resp = {}
+     try:
+         resp = po.upload_file(fn, resp['id'], db=db_name, callback=CallBack())
+     except:
+         resp["error"] = traceback.format_exc(limit=1)
+         logging.error(" Error in upload file: {}".format(resp["error"]))
      logging.info("response: {}".format(resp))
 
      if "ok" in resp:
