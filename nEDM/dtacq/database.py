@@ -110,7 +110,6 @@ class UploadClass(object):
              self.bar.show(size_rd)
 
      logging.info("Sending file: {}".format(fn))
-     resp = {}
      try:
          resp = po.upload_file(fn, resp['id'], db=db_name, callback=CallBack())
      except:
