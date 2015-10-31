@@ -16,6 +16,7 @@ class UploadClass(object):
      self._openfile = None
      self._filenumber = 0
      self.deferred = None
+     self._first = True
 
      self.__performUpload()
      self.writeNewFile()
@@ -93,8 +94,9 @@ class UploadClass(object):
             self._openfile is not None
 
    def __performUploadFileInThread(self, resp, fn):
-     if "ok" not in resp:
+     if self._first and "ok" not in resp:
          return "Document not saved!"
+     self._first = False
      acct, db = self.__acct()
      po = ProcessObject(acct=acct)
 
