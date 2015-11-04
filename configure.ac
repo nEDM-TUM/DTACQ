@@ -1,17 +1,18 @@
 #                               -*- Autoconf -*-
-# TWaveform configure.ac
+# DTACQ configure.ac
 #
 # Initial version written by M. Marino Aug 2011.
-# Rewritten by V. Belov Sep 2011.
 # Generates the configure script in use during the configuration phase of the
-# build for TWaveform.  Should be built with autoconf 2.63 
+# build for DTACQ.  Should be built with autoconf 2.69
 
 #########################################################################
 # Init stage
 #########################################################################
-AC_PREREQ(2.63)
+AC_PREREQ(2.69)
 AC_INIT([ACQ], [1.0])
 AC_CONFIG_SRCDIR([ACQ/CircularBuffer.hh])
+
+AC_CONFIG_MACRO_DIR([m4])
 
 # works for me, even in screen on Darwin
 AS_IF([test x"$PS1" != x],[BOLD=`tput smso`;OFFBOLD=`tput rmso`;])dnl make life brighter
@@ -20,7 +21,6 @@ AS_IF([test x"$PS1" != x],[BOLD=`tput smso`;OFFBOLD=`tput rmso`;])dnl make life 
 # Check base system
 #########################################################################
 AC_CANONICAL_HOST
-AC_PROG_AWK
 AC_PROG_SED
 AC_PROG_LN_S
 AC_PROG_MKDIR_P
@@ -40,25 +40,42 @@ AS_IF([test x"${build_cpu}" = "xx86_64"],[
       CXXFLAGS="$CXXFLAGS -m32"
       LDFLAGS="$LDFLAGS -m32"
       AC_MSG_NOTICE([Cross compiling on an x86_64 for i386... using -m32 flag])
-      # Strictly speaking one needs to check that compiler used is not a 
+      # Strictly speaking one needs to check that compiler used is not a
       #   cross-compiler, but it's so rare in _this_ case
   esac])
 
 #########################################################################
-#Find python, this is necessary for some of the build 
+# BOOST
 #########################################################################
-m4_include(python.m4)
-AM_PATH_PYTHON([2.5],
-               [HAVE_PYTHON=yes
-                PYTHONLIBDIR=`$PYTHON -c 'from distutils.sysconfig import get_python_lib; print "%s/config" % get_python_lib(0,1)'`
-                PYTHONLIBFLAGS=`python-config --ldflags`
-                PYTHONINCLUDEFLAGS=`python-config --includes`
-                NUMPYINCLUDEFLAGS=`python -c 'import numpy; import sys; sys.stdout.write("-I" + numpy.get_include())'`
-               ],
-               [HAVE_PYTHON=no
-                AC_MSG_ERROR([python not found, required for build])])
-AC_SUBST(HAVE_PYTHON)
-AC_SUBST(PYTHONLIBDIR)
+m4_include(ax_boost_base.m4)
+m4_include(ax_boost_system.m4)
+m4_include(ax_boost_thread.m4)
+m4_include(ax_boost_chrono.m4)
+m4_include(ax_boost_timer.m4)
+AX_BOOST_BASE([1.59],,[AC_MSG_ERROR([DTACQ needs Boost, but it was not found in your system])])
+
+AX_BOOST_SYSTEM
+AX_BOOST_THREAD
+AX_BOOST_CHRONO
+AX_BOOST_TIMER
+
+LDFLAGS="$LDFLAGS $BOOST_LDFLAGS"
+CXXFLAGS="$CXXFLAGS $BOOST_CPPFLAGS"
+#AC_CHECK_LIB([boost_timer],, AC
+
+
+#########################################################################
+#Find python, this is necessary for some of the build
+#########################################################################
+m4_include(ax_python_devel.m4)
+m4_include(ax_boost_python.m4)
+AX_PYTHON_DEVEL
+PYTHONLIBFLAGS="$PYTHON_EXTRA_LDFLAGS $PYTHON_LIBS"
+PYTHONINCLUDEFLAGS="$PYTHON_CPPFLAGS"
+NUMPYINCLUDEFLAGS=`$PYTHON -c 'import numpy; import sys; sys.stdout.write("-I" + numpy.get_include())'`
+
+PYTHON_EXTRA_LIBS=" "
+AX_BOOST_PYTHON
 AC_SUBST(PYTHONLIBFLAGS)
 AC_SUBST(PYTHONINCLUDEFLAGS)
 AC_SUBST(NUMPYINCLUDEFLAGS)
@@ -73,7 +90,7 @@ AC_SUBST(NUMPYINCLUDEFLAGS)
 # handle dynamic libraries
 case "$host_os" in
   darwin*)
-#    EXTRALIBFLAGS="-bind_at_load" 
+#    EXTRALIBFLAGS="-bind_at_load"
 #    SOFLAGS="-dynamiclib"
     SHREXT=dylib
     SOFLAGS="-dynamiclib -install_name @rpath/"
@@ -83,7 +100,7 @@ case "$host_os" in
   linux*)
     SOFLAGS="-shared -Wl,-soname,"
     SHREXT=so
-    LDFLAGS="$LDFLAGS -Wl,-rpath-link,\$(prefix)/lib -Wl,-z,defs" 
+    LDFLAGS="$LDFLAGS -Wl,-rpath-link,\$(prefix)/lib -Wl,-z,defs"
     ORIGINFLAGS=\'\$\$ORIGIN/../lib\',--enable-new-dtags
     LIBRARY_SEARCH_PATH=LD_LIBRARY_PATH
   ;;
@@ -123,20 +140,6 @@ AS_IF([test x"$as_echo" = x],
   AC_SUBST(AX_ECHO_N,[echo $ECHO_N " $ECHO_C"])],
  [AC_SUBST(AX_ECHO,$as_echo)
   AC_SUBST(AX_ECHO_N,$as_echo_n)])
-#---------------------------------------
-# Get directories to compile
-#_AS_ECHO_N([looking for all compilable directories... ])
-#DIRECTORIES=`find $EXOANALYSISROOT -type d -exec sh -c 'if test -d {}/src; then printf "{} "; fi' \;`
-#DIRECTORIES=`echo $DIRECTORIES | $SED "s|$EXOANALYSISROOT/||g"`
-#AC_MSG_RESULT(done)
-#AC_SUBST(DIRECTORIES)
-
-#EXTRACXXFLAGS="${EXTRACXXFLAGS} -O2 -ggdb"
-#AC_SUBST(EXTRACXXFLAGS)
-
-dnl AC_SUBST(CPPFLAGS)
-dnl LDFLAGS=`$ROOTCONF --ldflags --glibs` 
-dnl AC_SUBST(LDFLAGS)
 
 #########################################################################
 # Make output
@@ -146,11 +149,6 @@ dnl AC_SUBST(LDFLAGS)
 AC_OUTPUT_MAKE_DEFS
 AX_DEFS=$DEFS
 AC_SUBST(AX_DEFS)
-# rootcint has issues with some of the defines, in particular those that define
-# the arguments of the select function.  Therefore, we remove those defines and
-# add the rest to ROOTCINTDEFS
-ROOTCINTDEFS=`echo $AX_DEFS | $SED "s/-DSELECT_TYPE_ARG[[1-5]]*=[[^-D]]*//g"`
-AC_SUBST(ROOTCINTDEFS)
 #
 AC_CONFIG_FILES([
                  buildTools/config.mk
@@ -167,7 +165,7 @@ AC_MSG_NOTICE([for a list of options and configuration flags to adjust the confi
 AC_MSG_NOTICE([**********************************************************************************])
 
 AC_MSG_NOTICE([You have successfully configured ACQ.])
-AC_MSG_NOTICE([Please now compile by issuing the command (where the @%:@ in -j@%:@ refers to the CPUs ]) 
+AC_MSG_NOTICE([Please now compile by issuing the command (where the @%:@ in -j@%:@ refers to the CPUs ])
 AC_MSG_NOTICE([across which you'd like to split the build process @<:@optional@:>@):])
 AC_MSG_NOTICE
 AC_MSG_NOTICE([  make clean ])
