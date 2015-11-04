@@ -49,9 +49,9 @@ ERASE_BUILDBEGIN = rm -f $(BUILDBEGIN)
 # http://mad-scientist.net/make/autodep.html#norule
 MAKEDEPEND = $(SILENT)$(START_TRAP); rm -f $@; \
 	$(CXX) $(CXXFLAGS) -MM $(INCLUDEFLAGS) $< > $@.$$$$;                                 \
-        cp $@.$$$$ $@.temp.$$$$; sed -e 's/\#.*//' -e 's/^[^:]*: *//' -e 's/ *\\$$//' \
+        cp $@.$$$$ $@.temp.$$$$; $(SED) -e 's/\#.*//' -e 's/^[^:]*: *//' -e 's/ *\\$$//' \
         -e '/^$$/ d' -e 's/$$/ :/' < $@.$$$$ >> $@.temp.$$$$;                         \
-	sed 's,\($*\)\.o[ :]*,$(BUILDDIR)/\1.o $@ : ,g' < $@.temp.$$$$ > $@ ;          \
+	$(SED) 's,\($*\)\.o[ :]*,$(BUILDDIR)/\1.o $@ : ,g' < $@.temp.$$$$ > $@ ;          \
         rm -f $@*.$$$$;$(END_TRAP) 
 
 MAKEOFILES = $(SILENT)$(START_TRAP); $(CXX) $(CXXFLAGS) $(INCLUDEFLAGS) -c -o $@ $<; $(END_TRAP) 
