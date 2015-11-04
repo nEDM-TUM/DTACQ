@@ -237,7 +237,6 @@ bool Device::IsRunning() const
 
 Device::~Device()
 {
-  std::cout << " Destructing device: " << IPAddress() << std::endl;
   Cleanup();
 }
 
