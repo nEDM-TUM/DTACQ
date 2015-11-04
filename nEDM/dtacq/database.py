@@ -37,10 +37,14 @@ class UploadClass(object):
        d.callback("Not uploading file")
        return d
 
+     def func_gen(func, open_file):
+         print("Calling func_gen: {}".format(open_file))
+         return lambda x: threads.deferToThread( func, x, open_file)
+
      self._openfile["file"].close()
      if "written" in self._openfile:
-         self.deferred.addCallback(lambda x:
-           threads.deferToThread(self.__performUploadFileInThread, x, self._openfile["name"]))
+         self.deferred.addCallback(
+           func_gen(self.__performUploadFileInThread, self._openfile["name"]))
      else:
          # Means we never wrote, just delete
          os.remove(self._openfile["name"])
@@ -112,16 +116,17 @@ class UploadClass(object):
      logging.info("Sending file: {}".format(fn))
      try:
          resp = po.upload_file(fn, resp['id'], db=db_name, callback=CallBack())
+         if "ok" in resp:
+             resp["url"] = "/_attachments/{db}/{id}/{fn}".format(db=db_name,fn=fn,**resp)
+             resp["file_name"] = fn
+             resp["type"] = "FileUpload"
+             os.remove(fn)
+
      except:
-         resp["error"] = traceback.format_exc(limit=1)
-         logging.error(" Error in upload file: {}".format(resp["error"]))
+         logging.error(" Error in upload file: {}".format(traceback.format_exc(limit=1)))
+
      logging.info("response: {}".format(resp))
 
-     if "ok" in resp:
-         resp["url"] = "/_attachments/{db}/{id}/{fn}".format(db=db_name,fn=fn,**resp)
-         resp["file_name"] = fn
-         resp["type"] = "FileUpload"
-         os.remove(fn)
      return resp
 
 
