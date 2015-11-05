@@ -1,0 +1,7 @@
+fierlingerwiki: https://fierlinger.wiki.tum.de/Administration+Page
+baseurl: /DTACQ
+usertitle: DTACQ
+highlighter: pygments
+collections:
+  subsystems:
+    output: true
