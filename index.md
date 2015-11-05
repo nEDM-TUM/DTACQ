@@ -21,3 +21,12 @@ As simple as:
 make
 {% endhighlight %}
 
+To build tests, one can do:
+
+{% highlight bash %}
+make test
+{% endhighlight %}
+
+This will build tests in the `ACQtests` directory.  The executables in that
+directory provide some example code.
+
