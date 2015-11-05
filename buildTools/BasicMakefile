@@ -102,10 +102,14 @@ $(SHLIB): $(OBJECTS)
 	$(SILENT)$(SOMAKER) $(SOFLAGS)$(@F) -Wl,-rpath,$(ORIGINFLAGS)\
          -o $(SHLIB) $^ $(LIBFLAGS)
 
+%: $(BUILDDIR)/%.o
+	@echo "  [$(packageName)] Building App ........... $(@F)"
+	$(SILENT)$(SOMAKER) -o $@ $^ $(LIBFLAGS)
+
 clean:
 	@echo "  [$(packageName)] Cleaning"
 	$(SILENT)rm -rf $(BUILDDIR)
-	$(SILENT)rm -f $(SHLIB)
+	$(SILENT)rm -f $(SHLIB) $(APPS)
 
 
 
