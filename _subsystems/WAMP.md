@@ -45,6 +45,7 @@ if __name__ == '__main__':
 ## `dtacq` Modules
 
 `dtacq` is broken into several modules:
+
 * database - handles communications with the database (e.g. uploading of files
 and measurements)
 * cards - supported cards.  Here's where one would put new cards.
