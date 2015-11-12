@@ -1,0 +1,6 @@
+https://github.com/nEDM-TUM/Python-Slow-Control/tarball/master#egg=pynedm-0.1.1
+twisted
+autobahn
+numpy
+clint
+paramiko
