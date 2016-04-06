@@ -220,11 +220,20 @@ class ReadoutObj(object):
 
     def readBuffer(self, **kw):
         chans = kw.get("channels", [])
+        include_counter = kw.get("include_counter", False)
+
         # build load into a stream
         header = [len(chans)]
         header.extend(chans)
-        header = numpy.array(header, dtype=numpy.int32)
         al, ctr = self._pop_from_list()
+
+		# If we include the counter, then we set a bit flag in the header and
+		# append one value to the length
+		if include_counter:
+            header.append(ctr)
+            header[0] += 0xff00
+
+        header = numpy.array(header, dtype=numpy.uint32)
         header = header.tostring()
         if al is None:
             if not self.isRunning:
