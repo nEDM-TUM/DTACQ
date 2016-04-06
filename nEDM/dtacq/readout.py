@@ -42,6 +42,7 @@ class ReadoutObj(object):
         self.cond = threading.Condition(self.alock)
         self.obj_buffer = None
         self.upload_class = None
+        self.counter = -1
 
     def __getattr__(self, name):
         """
@@ -54,6 +55,9 @@ class ReadoutObj(object):
 
     def _add_to_list(self, al):
         self.cond.acquire()
+        self.counter += 1
+        if self.counter >= 0xffffffff:
+            self.counter = 0
         self.obj_buffer = numpy.copy(al)
         self.cond.release()
 
@@ -62,11 +66,12 @@ class ReadoutObj(object):
         self.cond.acquire()
         anobj = self.obj_buffer
         self.obj_buffer = None
+        ctr = self.counter
         self.cond.release()
 
         if anobj is not None and self.bit_right_shift != 0:
             anobj = numpy.right_shift(anobj, self.bit_right_shift)
-        return anobj
+        return anobj, ctr
 
     def resetReadout(self):
         """
@@ -115,6 +120,7 @@ class ReadoutObj(object):
     @notRunning
     def startReadout(self, **kw):
 
+        self.counter = -1
         ml = kw.get("mod_list", [])
         mods = ','.join(map(str,ml))
         if len(ml) == 0:
@@ -218,8 +224,8 @@ class ReadoutObj(object):
         header = [len(chans)]
         header.extend(chans)
         header = numpy.array(header, dtype=numpy.int32)
+        al, ctr = self._pop_from_list()
         header = header.tostring()
-        al = self._pop_from_list()
         if al is None:
             if not self.isRunning:
                 if self._exc is not None:
