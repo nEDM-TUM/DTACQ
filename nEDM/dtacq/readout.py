@@ -227,9 +227,9 @@ class ReadoutObj(object):
         header.extend(chans)
         al, ctr = self._pop_from_list()
 
-		# If we include the counter, then we set a bit flag in the header and
-		# append one value to the length
-		if include_counter:
+        # If we include the counter, then we set a bit flag in the header and
+        # append one value to the length
+        if include_counter:
             header.append(ctr)
             header[0] += 0xff00
 
