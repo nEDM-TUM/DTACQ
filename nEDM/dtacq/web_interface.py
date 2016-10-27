@@ -59,13 +59,16 @@ class ShipData(WebSocketServerProtocol):
 
        inv_map = dict([(v.ip_addr,k) for k,v in ro.items()])
        if ip in inv_map:
-           raise ReadoutException("Digitizer already controlled elsewhere ({})".format(inv_map[ip].req.peer))
+           raise ReadoutException("Jonas was here. Digitizer already controlled elsewhere ({})".format(inv_map[ip].req.peer))
 
        if ip not in available_urls:
          raise ReadoutException("'%s' not available" % ip)
        # OK, we can give control
+       self.announce("This is the testing Version")
        ro[self] = ReadoutObj(ip)
-
+   def requestBufferStream(self, **kw):
+       
+       self.announce("You really want to have the Buffer?")
 
    def releaseDigitizerControl(self, **kw):
        ro = self.__class__._readoutObjects
