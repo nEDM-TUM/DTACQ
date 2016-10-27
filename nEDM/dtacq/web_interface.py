@@ -12,6 +12,7 @@ available_urls = [
 ]
 class ShipData(WebSocketServerProtocol):
    _readoutObjects = {}
+   _streamingObjects = {}
    _connectedClients = set()
    def onMessage(self, payload, isBinary):
        retDic = {}
@@ -67,8 +68,8 @@ class ShipData(WebSocketServerProtocol):
        self.announce("This is the testing Version")
        ro[self] = ReadoutObj(ip)
    def requestBufferStream(self, **kw):
-       
-       self.announce("You really want to have the Buffer?")
+       ip = kw..get("ip_addr")
+       self.announce("You really want to have the Buffer? Jonas was here 2nd")
 
    def releaseDigitizerControl(self, **kw):
        ro = self.__class__._readoutObjects
