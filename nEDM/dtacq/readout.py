@@ -219,6 +219,8 @@ class ReadoutObj(object):
         self.dev.StopReadout()
 
     def readBuffer(self, **kw):
+        if not self.isRunning:
+            raise ReadoutException("measurement is not running")
         chans = kw.get("channels", [])
         include_counter = kw.get("include_counter", False)
 

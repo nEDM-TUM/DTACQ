@@ -24,10 +24,21 @@ class ShipData(WebSocketServerProtocol):
          if "ip" in mess:
            # Means we are referencing a digitizer
            ro = self.__class__._readoutObjects
-           if self not in ro:
-               raise ReadoutException("Digitizer control must first be requested")
-           obj = ro[self]
-
+           so = self.__class__._streamingObjects
+           if (self in ro) and (self in so):
+               raise ReadoutException("Digitizer must be controlled or streamed!")
+           if (self not in ro) and (self not in so):
+               raise ReadoutException("Digitizer control/stream must first be requested")
+           if (self in ro):
+               obj = ro[self]
+           if (self in so):
+               self.announce(str(retDic["cmd"]))
+               #check if the streamer is not to powerful
+               if not((retDic["cmd"] == "getChannels") or (retDic["cmd"]=="readBuffer")): 
+                   raise ReadoutException("Permission denied. Only streaming!")
+               blub = ro.keys()
+               obj = ro[blub[0]]
+               
          args = mess.get("args", {})
          retVal = getattr(obj, mess["cmd"])(**args)
          retDic["ok"] = True
@@ -67,9 +78,24 @@ class ShipData(WebSocketServerProtocol):
        # OK, we can give control
        self.announce("This is the testing Version")
        ro[self] = ReadoutObj(ip)
+
    def requestBufferStream(self, **kw):
-       ip = kw..get("ip_addr")
+       ip = kw.get("ip_addr")
        self.announce("You really want to have the Buffer? Jonas was here 2nd")
+
+       ro = self.__class__._streamingObjects
+       if self in ro:
+           if ro[self].ip_addr == ip: return
+           raise ReadoutException("Only one digitizer allowed for streaming the buffer")
+       
+       inv_map = dict([(v.ip_addr,k) for k,v in ro.items()])
+       if ip in inv_map:
+           self.announce("Jonas was here. Buffer stream shared with other IP ({})".format(inv_map[ip].req.peer))
+
+       if ip not in available_urls:
+         raise ReadoutException("'%s' not available" % ip)
+       ro[self] = ReadoutObj(ip)
+       self.announce(str(self._streamingObjects))
 
    def releaseDigitizerControl(self, **kw):
        ro = self.__class__._readoutObjects
