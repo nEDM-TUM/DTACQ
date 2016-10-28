@@ -32,11 +32,13 @@ class ShipData(WebSocketServerProtocol):
            if (self in ro):
                obj = ro[self]
            if (self in so):
-               self.announce(str(retDic["cmd"]))
+               #self.announce(str(retDic["cmd"]))
                #check if the streamer is not to powerful
                if not((retDic["cmd"] == "getChannels") or (retDic["cmd"]=="readBuffer")): 
                    raise ReadoutException("Permission denied. Only streaming!")
                blub = ro.keys()
+               if (len(blub)==0): 
+                   raise ReadoutException("No digitizer control requested -> no Buffer to read ")
                obj = ro[blub[0]]
                
          args = mess.get("args", {})
